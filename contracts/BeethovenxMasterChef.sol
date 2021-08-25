@@ -1,26 +1,33 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity 0.6.12;
+pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/EnumerableSet.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@boringcrypto/boring-solidity/contracts/libraries/BoringMath.sol";
-import "@boringcrypto/boring-solidity/contracts/BoringBatchable.sol";
-import "@boringcrypto/boring-solidity/contracts/BoringOwnable.sol";
+
+//import "@openzeppelin/contracts/utils/EnumerableSet.sol";
+//import "@openzeppelin/contracts/math/SafeMath.sol";
+//import "@openzeppelin/contracts/access/Ownable.sol";
+//import {BoringMath, BoringMath128} from "@boringcrypto/boring-solidity/contracts/libraries/BoringMath.sol";
+//import "@boringcrypto/boring-solidity/contracts/BoringBatchable.sol";
+import {BoringOwnable} from "@boringcrypto/boring-solidity/contracts/BoringOwnable.sol";
+import {BoringERC20, IERC20} from "@boringcrypto/boring-solidity/contracts/libraries/BoringERC20.sol";
 import "./BeethovenxToken.sol";
-import "./libraries/SignedSafeMath.sol";
+//import "./libraries/SignedSafeMath.sol";
 import "./interfaces/IRewarder.sol";
+//import "./libraries/SafeERC20.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
+//import {IERC20} from "./interfaces/IERC20.sol";
+//import "./libraries/SafeERC20.sol";
+//import "./libraries/SafeERC20.sol";
+//import "./libraries/SafeERC20.sol";
+//import "./libraries/SafeMath.sol";
 
 
 // Have fun reading it. Hopefully it's bug-free. God bless.
-contract BeethovenxMasterChef is BoringOwnable {
-    using BoringMath for uint256;
-    using BoringMath128 for uint128;
+contract BeethovenxMasterChef is Ownable {
+    using SafeMath for uint256;
+//    using BoringMath128 for uint128;
     using BoringERC20 for IERC20;
-    using SignedSafeMath for int256;
     // Info of each user.
     struct UserInfo {
         uint256 amount; // How many LP tokens the user has provided.
@@ -84,7 +91,7 @@ contract BeethovenxMasterChef is BoringOwnable {
     event Harvest(address indexed user, uint256 indexed pid, uint256 amount);
     event LogPoolAddition(uint256 indexed pid, uint256 allocPoint, IERC20 indexed lpToken, IRewarder indexed rewarder);
     event LogSetPool(uint256 indexed pid, uint256 allocPoint, IRewarder indexed rewarder, bool overwrite);
-    event LogUpdatePool(uint256 indexed pid, uint64 lastRewardBlock, uint256 lpSupply, uint256 accBeetxPerShare);
+    event LogUpdatePool(uint256 indexed pid, uint256 lastRewardBlock, uint256 lpSupply, uint256 accBeetxPerShare);
     event SetDevAddress(address indexed oldAddress, address indexed newAddress);
     event UpdateEmissionRate(address indexed user, uint256 _joePerSec);
 
@@ -148,7 +155,7 @@ contract BeethovenxMasterChef is BoringOwnable {
                 accBeetxPerShare: 0
             })
         );
-        emit LogPoolAddition(lpToken.length.sub(1), allocPoint, _lpToken, _rewarder);
+        emit LogPoolAddition(lpToken.length.sub(1), _allocPoint, _lpToken, _rewarder);
     }
 
     // Update the given pool's BEETHOVEN allocation point. Can only be called by the owner.
@@ -162,7 +169,7 @@ contract BeethovenxMasterChef is BoringOwnable {
             _allocPoint
         );
         if (overwrite) { rewarder[_pid] = _rewarder; }
-        poolInfo[_pid].allocPoint = _allocPoint.to64();
+        poolInfo[_pid].allocPoint = _allocPoint;
     }
 
     // View function to see pending BEETHOVENs on frontend.
@@ -176,7 +183,8 @@ contract BeethovenxMasterChef is BoringOwnable {
         // how many beethovenxs per lp token
         uint256 accBeetxPerShare = pool.accBeetxPerShare;
         // total staked lp tokens in this pool
-        uint256 lpSupply = pool.lpToken.balanceOf(address(this));
+        uint256 lpSupply = lpToken[_pid].balanceOf(address(this));
+
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
             // just use blocks ?
 //            uint256 multiplier =
@@ -187,17 +195,19 @@ contract BeethovenxMasterChef is BoringOwnable {
 //                    totalAllocPoint
 //                );
             uint256 multiplier = block.number.sub(pool.lastRewardBlock);
-            uint256 beetxReward = multiplier
-            .mul(beethovenxPerBlock)
+            uint256 totalBeetxRewards = multiplier
+            .mul(beetxPerBlock)
             .mul(pool.allocPoint)
-            .div(totalAllocPoint)
-            .mul(1000 - devPercent - treasuryPercent)
-            .div(1000);
+            / totalAllocPoint;
+
+            uint256 beetxRewardsForPool = totalBeetxRewards.mul(1000 - devPercent - treasuryPercent)
+            / 1000;
+
             accBeetxPerShare = accBeetxPerShare.add(
-                beetxReward.mul(ACC_BEETX_PRECISION).div(lpSupply)
+                beetxRewardsForPool.mul(ACC_BEETX_PRECISION) / lpSupply
             );
         }
-        pending = user.amount.mul(accBeetxPerShare).div(ACC_BEETX_PRECISION).sub(user.rewardDebt);
+        pending = user.amount.mul(accBeetxPerShare / ACC_BEETX_PRECISION).sub(user.rewardDebt);
     }
 
     // Update reward vairables for all pools. Be careful of gas spending!
@@ -209,15 +219,12 @@ contract BeethovenxMasterChef is BoringOwnable {
     }
 
     // Update reward variables of the given pool to be up-to-date.
-    function updatePool(uint256 pid) public returns (PoolInfo memory pool){
-        pool = poolInfo[pid];
-        if (block.number <= pool.lastRewardBlock) {
-            return;
-        }
+    function updatePool(uint256 _pid) public returns (PoolInfo memory pool){
+        pool = poolInfo[_pid];
 
         if (block.number > pool.lastRewardBlock) {
             // total lp tokens
-            uint256 lpSupply = lpToken[pid].balanceOf(address(this));
+            uint256 lpSupply = lpToken[_pid].balanceOf(address(this));
             if (lpSupply > 0) {
 //                uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
                 uint256 multiplier = block.number.sub(pool.lastRewardBlock);
@@ -227,73 +234,73 @@ contract BeethovenxMasterChef is BoringOwnable {
 //                        totalAllocPoint
 //                    );
 
-                uint256 beetxReward = multiplier.mul(beetxPerBlock).mul(pool.allocPoint).div(
-                    totalAllocPoint
-                );
+                uint256 beetxReward = multiplier.mul(beetxPerBlock).mul(pool.allocPoint) /
+                    totalAllocPoint;
                 uint256 lpPercent = 1000 - devPercent - treasuryPercent;
-                beetx.mint(devaddr, beetxReward.mul(devPercent).div(1000));
-                beetx.mint(treasuryaddr, beetxReward.mul(treasuryPercent).div(1000));
-                beetx.mint(address(this), beetxReward.mul(lpPercent).div(1000));
-                pool.accBeetxPerShare = pool.accJoePerShare.add(
-                    beetxReward.mul(ACC_BEETX_PRECISION).div(lpSupply).mul(lpPercent).div(1000)
+                beetx.mint(devaddr, beetxReward.mul(devPercent) / 1000);
+                beetx.mint(treasuryaddr, beetxReward.mul(treasuryPercent) / 1000);
+                beetx.mint(address(this), beetxReward.mul(lpPercent) / 1000);
+                pool.accBeetxPerShare = pool.accBeetxPerShare.add(
+                    (beetxReward.mul(ACC_BEETX_PRECISION) / lpSupply).mul(lpPercent) / 1000
                 );
             }
             pool.lastRewardBlock = block.number;
-            poolInfo[pid] = pool;
-            emit LogUpdatePool(pid, pool.lastRewardBlock, lpSupply, pool.accSushiPerShare);
+            poolInfo[_pid] = pool;
+            emit LogUpdatePool(_pid, pool.lastRewardBlock, lpSupply, pool.accBeetxPerShare);
         }
     }
 
     // Deposit LP tokens to MasterChef for BEETHOVEN allocation.
-    function deposit(uint256 _pid, uint256 _amount) public {
+    function deposit(uint256 _pid, uint256 _amount, address payable _to) public {
 
         PoolInfo memory pool = updatePool(_pid);
-        UserInfo storage user = userInfo[_pid][to];
+        UserInfo storage user = userInfo[_pid][_to];
 
         // Effects
         user.amount = user.amount.add(_amount);
-        user.rewardDebt = user.rewardDebt.add(int256(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION));
+        user.rewardDebt = user.rewardDebt.add(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
 
         // Interactions
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeetxReward(_pid, to, to, 0, user.amount);
+            _rewarder.onBeetxReward(_pid, _to, _to, 0, user.amount);
         }
 
-        lpToken[_pid].safeTransferFrom(msg.sender, address(this), _amount);
 
-        emit Deposit(msg.sender, _pid, _amount, to);
+        lpToken[_pid].safeTransferFrom( msg.sender, address(this), _amount);
+
+        emit Deposit(msg.sender, _pid, _amount, _to);
     }
 
     // Withdraw LP tokens from MasterChef.
-    function withdraw(uint256 _pid, uint256 _amount) public {
+    function withdraw(uint256 _pid, uint256 _amount, address _to) public {
 
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
 
         // Effects
-        user.rewardDebt = user.rewardDebt.sub(int256(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION));
+        user.rewardDebt = user.rewardDebt.sub(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
         user.amount = user.amount.sub(_amount);
 
         // Interactions
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeetxReward(_pid, msg.sender, to, 0, user.amount);
+            _rewarder.onBeetxReward(_pid, msg.sender, _to, 0, user.amount);
         }
 
-        lpToken[_pid].safeTransfer(to, _amount);
+        lpToken[_pid].safeTransfer(_to, _amount);
 
-        emit Withdraw(msg.sender, _pid, _amount, to);
+        emit Withdraw(msg.sender, _pid, _amount, _to);
     }
 
     /// @notice Harvest proceeds for transaction sender to `to`.
-    /// @param pid The index of the pool. See `poolInfo`.
-    /// @param to Receiver of BEETHOVENX rewards.
+    /// @param _pid The index of the pool. See `poolInfo`.
+    /// @param _to Receiver of BEETHOVENX rewards.
     function harvest(uint256 _pid, address _to) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
-        int256 accumulatedBeetx = int256(user.amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
-        uint256 _pendingBeetx = accumulatedBeetx.sub(user.rewardDebt).toUInt256();
+        uint256 accumulatedBeetx = user.amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION;
+        uint256 _pendingBeetx = accumulatedBeetx.sub(user.rewardDebt);
 
         // Effects
         user.rewardDebt = accumulatedBeetx;
@@ -313,16 +320,16 @@ contract BeethovenxMasterChef is BoringOwnable {
 
 
     /// @notice Withdraw LP tokens from MCV2 and harvest proceeds for transaction sender to `to`.
-    /// @param pid The index of the pool. See `poolInfo`.
-    /// @param amount LP token amount to withdraw.
-    /// @param to Receiver of the LP tokens and BEETHOVENX rewards.
+    /// @param _pid The index of the pool. See `poolInfo`.
+    /// @param _amount LP token amount to withdraw.
+    /// @param _to Receiver of the LP tokens and BEETHOVENX rewards.
     function withdrawAndHarvest(uint256 _pid, uint256 _amount, address _to) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
-        int256 accumulatedBeetx = int256(user.amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
-        uint256 _pendingBeetx = accumulatedBeetx.sub(user.rewardDebt).toUInt256();
+        uint256 accumulatedBeetx = user.amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION;
+        uint256 _pendingBeetx = accumulatedBeetx.sub(user.rewardDebt);
 
-        user.rewardDebt = accumulatedBeetx.sub(int256(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION));
+        user.rewardDebt = accumulatedBeetx.sub(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
         user.amount = user.amount.sub(_amount);
 
         safeBeetxTransfer(_to, _pendingBeetx);
@@ -339,7 +346,7 @@ contract BeethovenxMasterChef is BoringOwnable {
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw(uint256 _pid) public {
+    function emergencyWithdraw(uint256 _pid, address _to) public {
         UserInfo storage user = userInfo[_pid][msg.sender];
         uint256 amount = user.amount;
         user.amount = 0;
@@ -347,12 +354,12 @@ contract BeethovenxMasterChef is BoringOwnable {
 
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeetxReward(_pid, msg.sender, to, 0, 0);
+            _rewarder.onBeetxReward(_pid, msg.sender, _to, 0, 0);
         }
 
         // Note: transfer can fail or succeed if `amount` is zero.
-        lpToken[_pid].safeTransfer(to, amount);
-        emit EmergencyWithdraw(msg.sender, _pid, amount, to);
+        lpToken[_pid].safeTransfer(_to, amount);
+        emit EmergencyWithdraw(msg.sender, _pid, amount, _to);
     }
 
     // Safe beethovenx transfer function, just in case if rounding error causes pool to not have enough BEETHOVENs.
