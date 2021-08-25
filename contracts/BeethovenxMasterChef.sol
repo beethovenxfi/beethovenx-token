@@ -10,31 +10,13 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@boringcrypto/boring-solidity/contracts/libraries/BoringMath.sol";
 import "@boringcrypto/boring-solidity/contracts/BoringBatchable.sol";
 import "@boringcrypto/boring-solidity/contracts/BoringOwnable.sol";
-import "./BeethovenToken.sol";
+import "./BeethovenxToken.sol";
 import "./libraries/SignedSafeMath.sol";
 import "./interfaces/IRewarder.sol";
 
-interface IMigratorChef {
-    // Perform LP token migration from legacy UniswapV2 to BeethovenSwap.
-    // Take the current LP token address and return the new LP token address.
-    // Migrator should have full access to the caller's LP token.
-    // Return the new LP token address.
-    //
-    // XXX Migrator must have allowance access to UniswapV2 LP tokens.
-    // BeethovenSwap must mint EXACTLY the same amount of BeethovenSwap LP tokens or
-    // else something bad will happen. Traditional UniswapV2 does not
-    // do that so be careful!
-    function migrate(IERC20 token) external returns (IERC20);
-}
 
-// MasterChef is the master of Beethoven. He can make Beethoven and he is a fair guy.
-//
-// Note that it's ownable and the owner wields tremendous power. The ownership
-// will be transferred to a governance smart contract once SUSHI is sufficiently
-// distributed and the community can show to govern itself.
-//
 // Have fun reading it. Hopefully it's bug-free. God bless.
-contract MasterChef is BoringOwnable {
+contract BeethovenxMasterChef is BoringOwnable {
     using BoringMath for uint256;
     using BoringMath128 for uint128;
     using BoringERC20 for IERC20;
@@ -47,10 +29,10 @@ contract MasterChef is BoringOwnable {
         // We do some fancy math here. Basically, any point in time, the amount of SUSHIs
         // entitled to a user but is pending to be distributed is:
         //
-        //   pending reward = (user.amount * pool.accBeethovenPerShare) - user.rewardDebt
+        //   pending reward = (user.amount * pool.accBeethovenxPerShare) - user.rewardDebt
         //
         // Whenever a user deposits or withdraws LP tokens to a pool. Here's what happens:
-        //   1. The pool's `accBeethovenPerShare` (and `lastRewardBlock`) gets updated.
+        //   1. The pool's `accBeethovenxPerShare` (and `lastRewardBlock`) gets updated.
         //   2. User receives the pending reward sent to his/her address.
         //   3. User's `amount` gets updated.
         //   4. User's `rewardDebt` gets updated.
@@ -58,13 +40,13 @@ contract MasterChef is BoringOwnable {
     // Info of each pool.
     struct PoolInfo {
 //        IERC20 lpToken; // Address of LP token contract.
-        // we have a fixed number of SUSHI tokens released per block, each pool gets his fraction based on the allocPoint
-        uint256 allocPoint; // How many allocation points assigned to this pool. the fraction  SUSHIs to distribute per block.
-        uint256 lastRewardBlock; // Last block number that SUSHIs distribution occurs.
-        uint256 accBeethovenPerShare; // Accumulated SUSHIs per share, times 1e12. See below.
+        // we have a fixed number of BEETX tokens released per block, each pool gets his fraction based on the allocPoint
+        uint256 allocPoint; // How many allocation points assigned to this pool. the fraction  BEETXs to distribute per block.
+        uint256 lastRewardBlock; // Last block number that BEETXs distribution occurs.
+        uint256 accBeetxPerShare; // Accumulated BEETXs per share, times 1e12. See below.
     }
-    // The SUSHI TOKEN!
-    BeethovenToken public beethoven;
+    // The BEETX TOKEN!
+    BeethovenxToken public beetx;
     // Dev address.
     address public devaddr;
 
@@ -72,17 +54,15 @@ contract MasterChef is BoringOwnable {
     address public treasuryaddr;
 
     // BEETHOVEn tokens created per block.
-    uint256 public beethovenPerBlock;
+    uint256 public beetxPerBlock;
 
-    uint256 private constant ACC_BEETHOVEN_PRECISION = 1e12;
+    uint256 private constant ACC_BEETX_PRECISION = 1e12;
 
     // Percentage of pool rewards that goto the devs.
     uint256 public devPercent;
     // Percentage of pool rewards that goes to the treasury.
     uint256 public treasuryPercent;
 
-    // The migrator contract. It has a lot of power. Can only be set through governance (owner).
-    IMigratorChef public migrator;
     // Info of each pool.
     PoolInfo[] public poolInfo;
     // Info of each user that stakes LP tokens per pool. poolId => address => userInfo
@@ -95,7 +75,7 @@ contract MasterChef is BoringOwnable {
     mapping(uint256 => mapping(address => UserInfo)) public userInfo;
     // Total allocation poitns. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
-    // The block number when SUSHI mining starts.
+    // The block number when BEETX mining starts.
     uint256 public startBlock;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
@@ -104,7 +84,7 @@ contract MasterChef is BoringOwnable {
     event Harvest(address indexed user, uint256 indexed pid, uint256 amount);
     event LogPoolAddition(uint256 indexed pid, uint256 allocPoint, IERC20 indexed lpToken, IRewarder indexed rewarder);
     event LogSetPool(uint256 indexed pid, uint256 allocPoint, IRewarder indexed rewarder, bool overwrite);
-    event LogUpdatePool(uint256 indexed pid, uint64 lastRewardBlock, uint256 lpSupply, uint256 accSushiPerShare);
+    event LogUpdatePool(uint256 indexed pid, uint64 lastRewardBlock, uint256 lpSupply, uint256 accBeetxPerShare);
     event SetDevAddress(address indexed oldAddress, address indexed newAddress);
     event UpdateEmissionRate(address indexed user, uint256 _joePerSec);
 
@@ -115,10 +95,10 @@ contract MasterChef is BoringOwnable {
     );
 
     constructor(
-        BeethovenToken _beethoven,
+        BeethovenxToken _beethovenx,
         address _devaddr,
         address _treasuryaddr,
-        uint256 _beethovenPerBlock,
+        uint256 _beetxPerBlock,
         uint256 _startBlock,
         uint256 _devPercent,
         uint256 _treasuryPercent
@@ -135,10 +115,10 @@ contract MasterChef is BoringOwnable {
             _devPercent + _treasuryPercent <= 1000,
             "constructor: total percent over max"
         );
-        beethoven = _beethoven;
+        beetx = _beethovenx;
         devaddr = _devaddr;
         treasuryaddr = _treasuryaddr;
-        beethovenPerBlock = _beethovenPerBlock;
+        beetxPerBlock = _beetxPerBlock;
         startBlock = _startBlock;
         devPercent = _devPercent;
         treasuryPercent = _treasuryPercent;
@@ -165,7 +145,7 @@ contract MasterChef is BoringOwnable {
             PoolInfo({
                 allocPoint: _allocPoint,
                 lastRewardBlock: lastRewardBlock,
-                accBeethovenPerShare: 0
+                accBeetxPerShare: 0
             })
         );
         emit LogPoolAddition(lpToken.length.sub(1), allocPoint, _lpToken, _rewarder);
@@ -185,32 +165,16 @@ contract MasterChef is BoringOwnable {
         poolInfo[_pid].allocPoint = _allocPoint.to64();
     }
 
-    // Set the migrator contract. Can only be called by the owner.
-    function setMigrator(IMigratorChef _migrator) public onlyOwner {
-        migrator = _migrator;
-    }
-
-    // Migrate lp token to another lp contract. Can be called by anyone. We trust that migrator contract is good.
-    function migrate(uint256 _pid) public {
-        require(address(migrator) != address(0), "MasterChef: no migrator set");
-        IERC20 _lpToken = lpToken[_pid];
-        uint256 bal = _lpToken.balanceOf(address(this));
-        _lpToken.approve(address(migrator), bal);
-        IERC20 newLpToken = migrator.migrate(_lpToken);
-        require(bal == newLpToken.balanceOf(address(this)), "MasterChef: migrated balance must match");
-        lpToken[_pid] = newLpToken;
-    }
-
     // View function to see pending BEETHOVENs on frontend.
-    function pendingBeethoven(uint256 _pid, address _user)
+    function pendingBeetx(uint256 _pid, address _user)
         external
         view
         returns (uint256 pending)
     {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][_user];
-        // how many beethovens per lp token
-        uint256 accBeethovenPerShare = pool.accBeethovenPerShare;
+        // how many beethovenxs per lp token
+        uint256 accBeetxPerShare = pool.accBeetxPerShare;
         // total staked lp tokens in this pool
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
@@ -218,22 +182,22 @@ contract MasterChef is BoringOwnable {
 //            uint256 multiplier =
 //                getMultiplier(pool.lastRewardBlock, block.number);
 //
-//            uint256 beethovenReward =
-//                multiplier.mul(beethovenPerBlock).mul(pool.allocPoint).div(
+//            uint256 beethovenxReward =
+//                multiplier.mul(beethovenxPerBlock).mul(pool.allocPoint).div(
 //                    totalAllocPoint
 //                );
             uint256 multiplier = block.number.sub(pool.lastRewardBlock);
-            uint256 beethovenReward= multiplier
-            .mul(beethovenPerBlock)
+            uint256 beetxReward = multiplier
+            .mul(beethovenxPerBlock)
             .mul(pool.allocPoint)
             .div(totalAllocPoint)
             .mul(1000 - devPercent - treasuryPercent)
             .div(1000);
-            accBeethovenPerShare = accBeethovenPerShare.add(
-                beethovenReward.mul(ACC_BEETHOVEN_PRECISION).div(lpSupply)
+            accBeetxPerShare = accBeetxPerShare.add(
+                beetxReward.mul(ACC_BEETX_PRECISION).div(lpSupply)
             );
         }
-        pending = user.amount.mul(accBeethovenPerShare).div(ACC_BEETHOVEN_PRECISION).sub(user.rewardDebt);
+        pending = user.amount.mul(accBeetxPerShare).div(ACC_BEETX_PRECISION).sub(user.rewardDebt);
     }
 
     // Update reward vairables for all pools. Be careful of gas spending!
@@ -258,20 +222,20 @@ contract MasterChef is BoringOwnable {
 //                uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
                 uint256 multiplier = block.number.sub(pool.lastRewardBlock);
                 // rewards for this pool based on his allocation points
-//                uint256 beethovenReward =
-//                    multiplier.mul(beethovenPerBlock).mul(pool.allocPoint).div(
+//                uint256 beethovenxReward =
+//                    multiplier.mul(beethovenxPerBlock).mul(pool.allocPoint).div(
 //                        totalAllocPoint
 //                    );
 
-                uint256 beethovenReward = multiplier.mul(beethovenPerBlock).mul(pool.allocPoint).div(
+                uint256 beetxReward = multiplier.mul(beetxPerBlock).mul(pool.allocPoint).div(
                     totalAllocPoint
                 );
                 uint256 lpPercent = 1000 - devPercent - treasuryPercent;
-                beethoven.mint(devaddr, beethovenReward.mul(devPercent).div(1000));
-                beethoven.mint(treasuryaddr, beethovenReward.mul(treasuryPercent).div(1000));
-                beethoven.mint(address(this), beethovenReward.mul(lpPercent).div(1000));
-                pool.accBeethovenPerShare = pool.accJoePerShare.add(
-                    beethovenReward.mul(ACC_BEETHOVEN_PRECISION).div(lpSupply).mul(lpPercent).div(1000)
+                beetx.mint(devaddr, beetxReward.mul(devPercent).div(1000));
+                beetx.mint(treasuryaddr, beetxReward.mul(treasuryPercent).div(1000));
+                beetx.mint(address(this), beetxReward.mul(lpPercent).div(1000));
+                pool.accBeetxPerShare = pool.accJoePerShare.add(
+                    beetxReward.mul(ACC_BEETX_PRECISION).div(lpSupply).mul(lpPercent).div(1000)
                 );
             }
             pool.lastRewardBlock = block.number;
@@ -288,12 +252,12 @@ contract MasterChef is BoringOwnable {
 
         // Effects
         user.amount = user.amount.add(_amount);
-        user.rewardDebt = user.rewardDebt.add(int256(_amount.mul(pool.accSushiPerShare) / ACC_BEETHOVEN_PRECISION));
+        user.rewardDebt = user.rewardDebt.add(int256(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION));
 
         // Interactions
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeethovenReward(_pid, to, to, 0, user.amount);
+            _rewarder.onBeetxReward(_pid, to, to, 0, user.amount);
         }
 
         lpToken[_pid].safeTransferFrom(msg.sender, address(this), _amount);
@@ -308,13 +272,13 @@ contract MasterChef is BoringOwnable {
         UserInfo storage user = userInfo[_pid][msg.sender];
 
         // Effects
-        user.rewardDebt = user.rewardDebt.sub(int256(_amount.mul(pool.accSushiPerShare) / ACC_BEETHOVEN_PRECISION));
+        user.rewardDebt = user.rewardDebt.sub(int256(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION));
         user.amount = user.amount.sub(_amount);
 
         // Interactions
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeethovenReward(_pid, msg.sender, to, 0, user.amount);
+            _rewarder.onBeetxReward(_pid, msg.sender, to, 0, user.amount);
         }
 
         lpToken[_pid].safeTransfer(to, _amount);
@@ -324,54 +288,54 @@ contract MasterChef is BoringOwnable {
 
     /// @notice Harvest proceeds for transaction sender to `to`.
     /// @param pid The index of the pool. See `poolInfo`.
-    /// @param to Receiver of SUSHI rewards.
+    /// @param to Receiver of BEETHOVENX rewards.
     function harvest(uint256 _pid, address _to) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
-        int256 accumulatedBeethoven = int256(user.amount.mul(pool.accBeethovenPerShare) / ACC_BEETHOVEN_PRECISION);
-        uint256 _pendingBeethoven = accumulatedBeethoven.sub(user.rewardDebt).toUInt256();
+        int256 accumulatedBeetx = int256(user.amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
+        uint256 _pendingBeetx = accumulatedBeetx.sub(user.rewardDebt).toUInt256();
 
         // Effects
-        user.rewardDebt = accumulatedBeethoven;
+        user.rewardDebt = accumulatedBeetx;
 
         // Interactions
-        if (_pendingBeethoven != 0) {
-            safeBeethovenTransfer(_to, _pendingBeethoven);
+        if (_pendingBeetx != 0) {
+            safeBeetxTransfer(_to, _pendingBeetx);
         }
 
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeethovenReward( _pid, msg.sender, _to, _pendingBeethoven, user.amount);
+            _rewarder.onBeetxReward( _pid, msg.sender, _to, _pendingBeetx, user.amount);
         }
 
-        emit Harvest(msg.sender, _pid, _pendingBeethoven);
+        emit Harvest(msg.sender, _pid, _pendingBeetx);
     }
 
 
     /// @notice Withdraw LP tokens from MCV2 and harvest proceeds for transaction sender to `to`.
     /// @param pid The index of the pool. See `poolInfo`.
     /// @param amount LP token amount to withdraw.
-    /// @param to Receiver of the LP tokens and SUSHI rewards.
+    /// @param to Receiver of the LP tokens and BEETHOVENX rewards.
     function withdrawAndHarvest(uint256 _pid, uint256 _amount, address _to) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
-        int256 accumulatedBeethoven = int256(user.amount.mul(pool.accBeethovenPerShare) / ACC_BEETHOVEN_PRECISION);
-        uint256 _pendingBeethoven = accumulatedBeethoven.sub(user.rewardDebt).toUInt256();
+        int256 accumulatedBeetx = int256(user.amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
+        uint256 _pendingBeetx = accumulatedBeetx.sub(user.rewardDebt).toUInt256();
 
-        user.rewardDebt = accumulatedBeethoven.sub(int256(_amount.mul(pool.accBeethovenPerShare) / ACC_BEETHOVEN_PRECISION));
+        user.rewardDebt = accumulatedBeetx.sub(int256(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION));
         user.amount = user.amount.sub(_amount);
 
-        safeBeethovenTransfer(_to, _pendingBeethoven);
+        safeBeetxTransfer(_to, _pendingBeetx);
 
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeethovenReward(_pid, msg.sender, _to, _pendingBeethoven, user.amount);
+            _rewarder.onBeetxReward(_pid, msg.sender, _to, _pendingBeetx, user.amount);
         }
 
         lpToken[_pid].safeTransfer(_to, _amount);
 
         emit Withdraw(msg.sender, _pid, _amount, _to);
-        emit Harvest(msg.sender, _pid, _pendingBeethoven);
+        emit Harvest(msg.sender, _pid, _pendingBeetx);
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
@@ -383,7 +347,7 @@ contract MasterChef is BoringOwnable {
 
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeethovenReward(_pid, msg.sender, to, 0, 0);
+            _rewarder.onBeetxReward(_pid, msg.sender, to, 0, 0);
         }
 
         // Note: transfer can fail or succeed if `amount` is zero.
@@ -391,13 +355,13 @@ contract MasterChef is BoringOwnable {
         emit EmergencyWithdraw(msg.sender, _pid, amount, to);
     }
 
-    // Safe beethoven transfer function, just in case if rounding error causes pool to not have enough BEETHOVENs.
-    function safeBeethovenTransfer(address _to, uint256 _amount) internal {
-        uint256 beethovenBal = beethoven.balanceOf(address(this));
-        if (_amount > beethovenBal) {
-            beethoven.transfer(_to, beethovenBal);
+    // Safe beethovenx transfer function, just in case if rounding error causes pool to not have enough BEETHOVENs.
+    function safeBeetxTransfer(address _to, uint256 _amount) internal {
+        uint256 beetxBal = beetx.balanceOf(address(this));
+        if (_amount > beetxBal) {
+            beetx.transfer(_to, beetxBal);
         } else {
-            beethoven.transfer(_to, _amount);
+            beetx.transfer(_to, _amount);
         }
     }
 
@@ -433,9 +397,9 @@ contract MasterChef is BoringOwnable {
 
     // Pancake has to add hidden dummy pools inorder to alter the emission,
     // here we make it simple and transparent to all.
-    function updateEmissionRate(uint256 _joePerSec) public onlyOwner {
+    function updateEmissionRate(uint256 _beetxPerBlock) public onlyOwner {
         massUpdatePools();
-        joePerSec = _joePerSec;
-        emit UpdateEmissionRate(msg.sender, _joePerSec);
+        beetxPerBlock = _beetxPerBlock;
+        emit UpdateEmissionRate(msg.sender, _beetxPerBlock);
     }
 }

@@ -16,8 +16,8 @@ analyze:
         - contracts/uniswapv2/UniswapV2ERC20.sol:UniswapV2ERC20
         - contracts/uniswapv2/UniswapV2Router02.sol:UniswapV2Router02
         - contracts/SushiRoll.sol:SushiRoll
-        - contracts/BeethovenToken.sol:SushiToken
-        - contracts/BeethovenBar.sol:SushiBar
-        - contracts/MasterChefBeethoven.sol:MasterChef
+        - contracts/BeethovenxToken.sol:SushiToken
+        - contracts/BeethovenxBar.sol:SushiBar
+        - contracts/BeethovenxMasterChef.sol:MasterChef
         - contracts/governance/Timelock.sol:Timelock
         - contracts/Migrator.sol:Migrator
