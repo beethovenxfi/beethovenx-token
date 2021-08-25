@@ -1,21 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.6.12;
-pragma experimental ABIEncoderV2;
+pragma solidity 0.8.7;
+//pragma experimental ABIEncoderV2;
 
 
-//import "@openzeppelin/contracts/utils/EnumerableSet.sol";
-//import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 //import "@openzeppelin/contracts/access/Ownable.sol";
 //import {BoringMath, BoringMath128} from "@boringcrypto/boring-solidity/contracts/libraries/BoringMath.sol";
 //import "@boringcrypto/boring-solidity/contracts/BoringBatchable.sol";
-import {BoringOwnable} from "@boringcrypto/boring-solidity/contracts/BoringOwnable.sol";
-import {BoringERC20, IERC20} from "@boringcrypto/boring-solidity/contracts/libraries/BoringERC20.sol";
+//import {BoringERC20, IERC20} from "@boringcrypto/boring-solidity/contracts/libraries/BoringERC20.sol";
 import "./BeethovenxToken.sol";
 //import "./libraries/SignedSafeMath.sol";
 import "./interfaces/IRewarder.sol";
 //import "./libraries/SafeERC20.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
 //import {IERC20} from "./interfaces/IERC20.sol";
 //import "./libraries/SafeERC20.sol";
 //import "./libraries/SafeERC20.sol";
@@ -25,9 +22,8 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 
 // Have fun reading it. Hopefully it's bug-free. God bless.
 contract BeethovenxMasterChef is Ownable {
-    using SafeMath for uint256;
 //    using BoringMath128 for uint128;
-    using BoringERC20 for IERC20;
+    using  SafeERC20 for IERC20;
     // Info of each user.
     struct UserInfo {
         uint256 amount; // How many LP tokens the user has provided.
@@ -144,7 +140,7 @@ contract BeethovenxMasterChef is Ownable {
     ) public onlyOwner {
         uint256 lastRewardBlock =
             block.number > startBlock ? block.number : startBlock;
-        totalAllocPoint = totalAllocPoint.add(_allocPoint);
+        totalAllocPoint = totalAllocPoint + _allocPoint;
         lpToken.push(_lpToken);
         rewarder.push(_rewarder);
 
@@ -155,7 +151,7 @@ contract BeethovenxMasterChef is Ownable {
                 accBeetxPerShare: 0
             })
         );
-        emit LogPoolAddition(lpToken.length.sub(1), _allocPoint, _lpToken, _rewarder);
+        emit LogPoolAddition(lpToken.length - 1, _allocPoint, _lpToken, _rewarder);
     }
 
     // Update the given pool's BEETHOVEN allocation point. Can only be called by the owner.
@@ -165,9 +161,7 @@ contract BeethovenxMasterChef is Ownable {
         IRewarder _rewarder,
         bool overwrite
     ) public onlyOwner {
-        totalAllocPoint = totalAllocPoint.sub(poolInfo[_pid].allocPoint).add(
-            _allocPoint
-        );
+        totalAllocPoint = totalAllocPoint - poolInfo[_pid].allocPoint + _allocPoint;
         if (overwrite) { rewarder[_pid] = _rewarder; }
         poolInfo[_pid].allocPoint = _allocPoint;
     }
@@ -194,20 +188,21 @@ contract BeethovenxMasterChef is Ownable {
 //                multiplier.mul(beethovenxPerBlock).mul(pool.allocPoint).div(
 //                    totalAllocPoint
 //                );
-            uint256 multiplier = block.number.sub(pool.lastRewardBlock);
-            uint256 totalBeetxRewards = multiplier
-            .mul(beetxPerBlock)
-            .mul(pool.allocPoint)
-            / totalAllocPoint;
+            uint256 blocksSinceLastReward = block.number - pool.lastRewardBlock;
+            // based on the pool weight (allocation points) we calculate the beetx rewarded for this specific pool
+            uint256 beetxRewards = blocksSinceLastReward * beetxPerBlock * pool.allocPoint / totalAllocPoint;
 
-            uint256 beetxRewardsForPool = totalBeetxRewards.mul(1000 - devPercent - treasuryPercent)
-            / 1000;
+            // we take parts of the rewards for dev & treasury, these can be subject to change, so we recalculate it
+            // a value of 1000 = 100%
+            uint256 poolPercent = 1000 - devPercent - treasuryPercent;
+            uint256 beetxRewardsForPool = beetxRewards * poolPercent / 1000;
 
-            accBeetxPerShare = accBeetxPerShare.add(
-                beetxRewardsForPool.mul(ACC_BEETX_PRECISION) / lpSupply
-            );
+            // we calculate the new amount of accumulated beetx per LP token
+            accBeetxPerShare = accBeetxPerShare + (beetxRewardsForPool * ACC_BEETX_PRECISION / lpSupply);
         }
-        pending = user.amount.mul(accBeetxPerShare / ACC_BEETX_PRECISION).sub(user.rewardDebt);
+        // based on the number of LP tokens the user owns, we calculate the pending amount by subtracting the amount
+        // which he is not eligible for (joined the pool later) or has already harvested
+        pending = user.amount * accBeetxPerShare / ACC_BEETX_PRECISION - user.rewardDebt;
     }
 
     // Update reward vairables for all pools. Be careful of gas spending!
@@ -223,26 +218,29 @@ contract BeethovenxMasterChef is Ownable {
         pool = poolInfo[_pid];
 
         if (block.number > pool.lastRewardBlock) {
-            // total lp tokens
+            // total lp tokens staked for this pool
             uint256 lpSupply = lpToken[_pid].balanceOf(address(this));
             if (lpSupply > 0) {
 //                uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-                uint256 multiplier = block.number.sub(pool.lastRewardBlock);
+                uint256 blocksSinceLastReward = block.number - pool.lastRewardBlock;
                 // rewards for this pool based on his allocation points
 //                uint256 beethovenxReward =
 //                    multiplier.mul(beethovenxPerBlock).mul(pool.allocPoint).div(
 //                        totalAllocPoint
 //                    );
 
-                uint256 beetxReward = multiplier.mul(beetxPerBlock).mul(pool.allocPoint) /
-                    totalAllocPoint;
-                uint256 lpPercent = 1000 - devPercent - treasuryPercent;
-                beetx.mint(devaddr, beetxReward.mul(devPercent) / 1000);
-                beetx.mint(treasuryaddr, beetxReward.mul(treasuryPercent) / 1000);
-                beetx.mint(address(this), beetxReward.mul(lpPercent) / 1000);
-                pool.accBeetxPerShare = pool.accBeetxPerShare.add(
-                    (beetxReward.mul(ACC_BEETX_PRECISION) / lpSupply).mul(lpPercent) / 1000
-                );
+                uint256 beetxRewards = blocksSinceLastReward * beetxPerBlock * pool.allocPoint / totalAllocPoint;
+
+                // we take parts of the rewards for dev & treasury, these can be subject to change, so we recalculate it
+                // a value of 1000 = 100%
+                uint256 poolPercent = 1000 - devPercent - treasuryPercent;
+
+                uint256 beetxRewardsForPool = beetxRewards * poolPercent / 1000;
+
+                beetx.mint(devaddr, beetxRewards * devPercent / 1000);
+                beetx.mint(treasuryaddr, beetxRewards * treasuryPercent / 1000);
+                beetx.mint(address(this), beetxRewardsForPool);
+                pool.accBeetxPerShare =pool.accBeetxPerShare + (beetxRewardsForPool * ACC_BEETX_PRECISION / lpSupply);
             }
             pool.lastRewardBlock = block.number;
             poolInfo[_pid] = pool;
@@ -256,9 +254,11 @@ contract BeethovenxMasterChef is Ownable {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][_to];
 
-        // Effects
-        user.amount = user.amount.add(_amount);
-        user.rewardDebt = user.rewardDebt.add(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
+        user.amount = user.amount + _amount;
+        // since we add more LP tokens, we have to keep track of the rewards he is not eligible for
+        // if we would not do that, he would get rewards like he added them since the beginning of this pool
+        // note that only the accBeetxPerShare have the precision applied
+        user.rewardDebt = user.rewardDebt + _amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
 
         // Interactions
         IRewarder _rewarder = rewarder[_pid];
@@ -278,9 +278,10 @@ contract BeethovenxMasterChef is Ownable {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
 
-        // Effects
-        user.rewardDebt = user.rewardDebt.sub(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
-        user.amount = user.amount.sub(_amount);
+        // since we do not harvest in the same step, we accredit the farmed beetx based on the amount of
+        // LP tokens withdrawn on the reward debt (which will be subtracted on a harvest)
+        user.rewardDebt = user.rewardDebt - _amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
+        user.amount = user.amount - _amount;
 
         // Interactions
         IRewarder _rewarder = rewarder[_pid];
@@ -299,13 +300,15 @@ contract BeethovenxMasterChef is Ownable {
     function harvest(uint256 _pid, address _to) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
-        uint256 accumulatedBeetx = user.amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION;
-        uint256 _pendingBeetx = accumulatedBeetx.sub(user.rewardDebt);
 
-        // Effects
+        // this would  be the amount if the user joined right from the start of the farm
+        uint256 accumulatedBeetx = user.amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
+        // subtracting the rewards the user is not eligible for
+        uint256 _pendingBeetx = accumulatedBeetx - user.rewardDebt;
+
+        // we set the new rewardDebt to the current accumulated amount of rewards for his amount of LP token
         user.rewardDebt = accumulatedBeetx;
 
-        // Interactions
         if (_pendingBeetx != 0) {
             safeBeetxTransfer(_to, _pendingBeetx);
         }
@@ -326,11 +329,15 @@ contract BeethovenxMasterChef is Ownable {
     function withdrawAndHarvest(uint256 _pid, uint256 _amount, address _to) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
-        uint256 accumulatedBeetx = user.amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION;
-        uint256 _pendingBeetx = accumulatedBeetx.sub(user.rewardDebt);
 
-        user.rewardDebt = accumulatedBeetx.sub(_amount.mul(pool.accBeetxPerShare) / ACC_BEETX_PRECISION);
-        user.amount = user.amount.sub(_amount);
+        // this would  be the amount if the user joined right from the start of the farm
+        uint256 accumulatedBeetx = user.amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
+        // subtracting the rewards the user is not eligible for
+        uint256 _pendingBeetx = accumulatedBeetx - user.rewardDebt;
+
+        // todo: not quite sure why this differs from the withdraw function
+        user.rewardDebt = accumulatedBeetx - _amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
+        user.amount = user.amount - _amount;
 
         safeBeetxTransfer(_to, _pendingBeetx);
 
