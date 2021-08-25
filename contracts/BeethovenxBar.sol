@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.6.12;
+pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
 
 //
 // This contract handles swapping to and from xBeethovenx, Beethovenx Balancer's staking token.
 contract BeethovenxBar is ERC20("BeethovenxBar", "nBEETX"){
-    using SafeMath for uint256;
     IERC20 public beethovenx;
 
     // Define the Beethoven token contract
@@ -29,7 +27,7 @@ contract BeethovenxBar is ERC20("BeethovenxBar", "nBEETX"){
         } 
         // Calculate and mint the amount of nBeethovenx the Beethovenx is worth. The ratio will change overtime, as nBeethovenx is burned/minted and Beethovenx deposited + gained from fees / withdrawn.
         else {
-            uint256 what = _amount.mul(totalShares).div(totalBeethovenx);
+            uint256 what = _amount * totalShares / totalBeethovenx;
             _mint(msg.sender, what);
         }
         // Lock the Beethovenx in the contract
@@ -43,7 +41,7 @@ contract BeethovenxBar is ERC20("BeethovenxBar", "nBEETX"){
         // Gets the amount of nBeethovenx in existence
         uint256 totalShares = totalSupply();
         // Calculates the amount of Beethovenx the nBeethovenx is worth
-        uint256 what = _share.mul(beethovenx.balanceOf(address(this))).div(totalShares);
+        uint256 what = _share * beethovenx.balanceOf(address(this)) / totalShares;
         _burn(msg.sender, _share);
         beethovenx.transfer(msg.sender, what);
     }
