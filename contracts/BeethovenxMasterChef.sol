@@ -91,12 +91,6 @@ contract BeethovenxMasterChef is Ownable {
     event SetDevAddress(address indexed oldAddress, address indexed newAddress);
     event UpdateEmissionRate(address indexed user, uint256 _joePerSec);
 
-    event EmergencyWithdraw(
-        address indexed user,
-        uint256 indexed pid,
-        uint256 amount
-    );
-
     constructor(
         BeethovenxToken _beethovenx,
         address _devaddr,
@@ -162,8 +156,9 @@ contract BeethovenxMasterChef is Ownable {
         bool overwrite
     ) public onlyOwner {
         totalAllocPoint = totalAllocPoint - poolInfo[_pid].allocPoint + _allocPoint;
-        if (overwrite) { rewarder[_pid] = _rewarder; }
         poolInfo[_pid].allocPoint = _allocPoint;
+        if (overwrite) { rewarder[_pid] = _rewarder; }
+        emit LogSetPool(_pid, _allocPoint, overwrite ? _rewarder : rewarder[_pid], overwrite);
     }
 
     // View function to see pending BEETHOVENs on frontend.
@@ -335,7 +330,6 @@ contract BeethovenxMasterChef is Ownable {
         // subtracting the rewards the user is not eligible for
         uint256 _pendingBeetx = accumulatedBeetx - user.rewardDebt;
 
-        // todo: not quite sure why this differs from the withdraw function
         user.rewardDebt = accumulatedBeetx - _amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
         user.amount = user.amount - _amount;
 
