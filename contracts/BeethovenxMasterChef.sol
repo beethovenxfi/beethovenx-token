@@ -235,7 +235,7 @@ contract BeethovenxMasterChef is Ownable {
                 beetx.mint(devaddr, beetxRewards * devPercent / 1000);
                 beetx.mint(treasuryaddr, beetxRewards * treasuryPercent / 1000);
                 beetx.mint(address(this), beetxRewardsForPool);
-                pool.accBeetxPerShare =pool.accBeetxPerShare + (beetxRewardsForPool * ACC_BEETX_PRECISION / lpSupply);
+                pool.accBeetxPerShare = pool.accBeetxPerShare + (beetxRewardsForPool * ACC_BEETX_PRECISION / lpSupply);
             }
             pool.lastRewardBlock = block.number;
             poolInfo[_pid] = pool;
