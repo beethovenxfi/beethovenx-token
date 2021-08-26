@@ -269,34 +269,6 @@ contract BeethovenxMasterChef is Ownable {
         emit Deposit(msg.sender, _pid, _amount, _to);
     }
 
-    // Withdraw LP tokens from MasterChef.
-    function withdraw(uint256 _pid, uint256 _amount, address _to) public {
-
-        PoolInfo memory pool = updatePool(_pid);
-        UserInfo storage user = userInfo[_pid][msg.sender];
-
-        // since we do not harvest in the same step, we accredit the farmed beetx based on the amount of
-        // LP tokens withdrawn on the reward debt (which will be subtracted on a harvest)
-        uint256 rewardDebtOfWithdrawnAmount = _amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
-//        if(rewardDebtOfWithdrawnAmount > user.rewardDebt) {
-//            user.rewardDebt = 0;
-//        } else {
-        console.log("WIITTTHHH: currentDebt: %s, rewardOfWith: %s", user.rewardDebt, rewardDebtOfWithdrawnAmount);
-            user.rewardDebt = user.rewardDebt - rewardDebtOfWithdrawnAmount;
-//        }
-        user.amount = user.amount - _amount;
-
-        // Interactions
-        IRewarder _rewarder = rewarder[_pid];
-        if (address(_rewarder) != address(0)) {
-            _rewarder.onBeetxReward(_pid, msg.sender, _to, 0, user.amount);
-        }
-
-        lpToken[_pid].safeTransfer(_to, _amount);
-
-        emit Withdraw(msg.sender, _pid, _amount, _to);
-    }
-
     /// @notice Harvest proceeds for transaction sender to `to`.
     /// @param _pid The index of the pool. See `poolInfo`.
     /// @param _to Receiver of BEETHOVENX rewards.
