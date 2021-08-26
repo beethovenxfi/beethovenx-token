@@ -1,6 +1,15 @@
 import { expect, assert } from "chai"
-import { advanceBlockTo, advanceBlock, getBigNumber, ADDRESS_ZERO, deployContract, deployERC20Mock, deployChef } from "./utilities"
-import { ethers } from "hardhat"
+import {
+  advanceBlockTo,
+  advanceBlock,
+  getBigNumber,
+  ADDRESS_ZERO,
+  deployContract,
+  deployERC20Mock,
+  deployChef,
+  setAutomineBlocks,
+} from "./utilities"
+import { ethers, network } from "hardhat"
 import { BeethovenxMasterChef, BeethovenxToken, ERC20Mock, RewarderMock } from "../types"
 import { Signer } from "ethers"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
@@ -221,8 +230,11 @@ describe("BeethovenxMasterChef", function () {
         we play the following scenario:
         block 310 - alice deposit 10 LP
         block 314 - bob deposits 20 LP
-         => carol rewards : 1 * 4 * 1000 * 0.6
+         => alice rewards : 1 * 4 * 1000 * 0.6
         block 318 - carol deposits 20 LPs
+         => alice rewards = prevRewards + 1/3 * 4 * 1000 * 0.6
+            bob rewards = 2/3 * 4 * 1000 * 0.6
+         ....
      */
     const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 300, 200, 200)
     await beetx.transferOwnership(chef.address)
@@ -244,38 +256,91 @@ describe("BeethovenxMasterChef", function () {
     await chef.connect(alice).harvest(0, alice.address) // block 313
     expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(3 * 1000 * 0.6))
     // Bob deposits 20 LPs at block 314
-    await chef.connect(bob).deposit(0, "20", bob.address)
-    await chef.connect(alice).harvest(0, alice.address) // block 315
+
+    await chef.connect(bob).deposit(0, "20", bob.address) //314
+    await advanceBlockTo("315")
+
+    // we disable automine so we can do both harvest calls in 1 block
+    await setAutomineBlocks(false)
+
+    await chef.connect(alice).harvest(0, alice.address) // block 316
     await chef.connect(bob).harvest(0, bob.address) // block 316
-    // await advanceBlockTo("316")
+
+    await advanceBlockTo("316")
+    await setAutomineBlocks(true)
     // expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(4 * 1000 * 0.6 + (1000 / 3) * 0.6))
-    // alice should have 4 * 1000 * 0.6 + 1000 / 3 * 0.6 = 2600
-    expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(2600))
+    // alice should have 4 * 1000 * 0.6 + 2* 1000 / 3 * 0.6 = 2800
+    expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(2800))
     // bob should have  2 * 1000 * (2 / 3) * 0.6 = 800
     expect(await beetx.balanceOf(bob.address)).to.equal(getBigNumber(800))
 
     // Carol deposits 30 LPs at block 318
-    await chef.connect(carol).deposit(0, "20", carol.address) // block 317
+    await chef.connect(carol).deposit(0, "30", carol.address) // block 317
     await advanceBlockTo("319")
-    // alice deposits 10 more LP's
-    await chef.connect(alice).harvest(0, alice.address) // block 320
-    // At this point:
-    //   Alice should have: (4*1000 + 4*1/3*1000 + 2*1/6*1000) * 0.6 = 3400 ==> 40% go to dev & treasury
-    //   MasterChef should have the remaining: 10000 - 3400 = 6600
 
-    expect(await beetx.totalSupply()).to.equal(getBigNumber(10000))
-    expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(3440))
-    expect(await beetx.balanceOf(bob.address)).to.equal(0)
+    await chef.connect(alice).harvest(0, alice.address) // block 320
+    // await chef.connect(bob).harvest(0, alice.address) // block 320
+    // await chef.connect(carol).harvest(0, alice.address) // block 320
+
+    /*
+      alice (all harvested):
+        preVal + 1 block with 1/3 rewards + 3 blocks 1/6 of the rewards
+        2800 + (1 * 1000 * 1/3 * 0.6) + (3 * 1000 * 1/6 * 0.6) = 3300
+
+     bob (only preVal harvested, rest pending on master chef):
+      preVal + 1 block with 2/3 rewards + 3 blocks 2/6 rewards
+      prevVal: 800  |||  pending:  (1 * 1000 * 2/3 * 0.6) + ( 3 * 1000 * 2/6 * 0.6) = 1000 (total: 1800)
+
+     carol (everything pending on master chef):
+        3 blocks with 3/6 rewards
+        pending: 3 * 1000 * 3/6 * 0.6 = 900
+   */
+
+    expect(await beetx.totalSupply()).to.equal(getBigNumber(10_000))
+    expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(3300))
+    // bob should still only have his 800 from the last harvest
+    expect(await beetx.balanceOf(bob.address)).to.equal(getBigNumber(800))
+    // carol has harvested nothing yet
     expect(await beetx.balanceOf(carol.address)).to.equal(0)
-    expect(await beetx.balanceOf(chef.address)).to.equal(getBigNumber(6400))
+    // all unharvested rewards are on the chef => total supply - alice balance - bob balance - dev balance - treasury balance
+    expect(await beetx.balanceOf(chef.address)).to.equal(getBigNumber(10_000 - 3300 - 800 - 2000 - 2000))
+
+    // 20% of all token rewards should have gone to dev
     expect(await beetx.balanceOf(dev.address)).to.equal(getBigNumber(2000))
+
+    // 20% of all token rewards should have gone to treasury
     expect(await beetx.balanceOf(treasury.address)).to.equal(getBigNumber(2000))
 
-    // await this.chef.connect(this.alice).deposit(0, "10", { from: this.alice.address })
-    // Bob withdraws 5 LPs at block 330. At this point:
+    // alice deposits 10 more LP's
+    await chef.connect(alice).deposit(0, "10", alice.address) // block 321
+    await advanceBlockTo("329")
+
+    // Bob withdraws 5 LPs
+    await chef.connect(bob).withdrawAndHarvest(0, "5", bob.address) // block 330
+
+    /*
+      alice (parts harvested, parts pending):
+        preVal + 1 block 1/6 of the rewards + 9 blocks 2/7 of the rewards
+        harvested: 3300 ||  pending: 1 * 1000 * 1/6 * 0.6 + 9 * 1000 * 2/7 * 0.6 = 1642.857142857142857142 (total: 4942.857142857142857142)
+
+     bob (all harvested):
+      preVal + 1 block 2/6 rewards + 9 blocks 2/7 rewards
+      harvested: 1800 + 1 * 1000 * 2/6 * 0.6 + 9 * 1000 * 2/7 * 0.6 = 3542.857142857142857142
+
+     carol (everything pending on master chef):
+      preval + 10 blocks 3/6 rewards
+      pending: 900 + 10 * 1000 * 3/6 * 0.6 = 3900
+   */
+    expect(await beetx.totalSupply()).to.equal(getBigNumber(20_000))
+    expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(3300))
+    expect(await beetx.balanceOf(bob.address)).to.equal(getBigNumber(3542.857142857142857142))
+    expect(await beetx.balanceOf(carol.address)).to.equal(getBigNumber(0))
+    expect(await beetx.balanceOf(chef.address)).to.equal(getBigNumber(5157.142857142857142858))
+    expect(await beetx.balanceOf(dev.address)).to.equal(getBigNumber(4000))
+    expect(await beetx.balanceOf(treasury.address)).to.equal(getBigNumber(4000))
+
     //   Bob should have: 4*2/3*1000 + 2*2/6*1000 + 10*2/7*1000 = 6190
     // await advanceBlockTo("329")
-    // await this.chef.connect(this.bob).withdraw(0, "5", { from: this.bob.address })
     // expect(await this.sushi.totalSupply()).to.equal("22000")
     // expect(await this.sushi.balanceOf(this.alice.address)).to.equal("5666")
     // expect(await this.sushi.balanceOf(this.bob.address)).to.equal("6190")

@@ -1,3 +1,5 @@
+import { network } from "hardhat"
+
 const { ethers } = require("hardhat")
 
 const { BigNumber } = ethers
@@ -10,6 +12,10 @@ export async function advanceBlockTo(blockNumber: string) {
   for (let i = await ethers.provider.getBlockNumber(); i < blockNumber; i++) {
     await advanceBlock()
   }
+}
+
+export async function setAutomineBlocks(enabled: boolean) {
+  return network.provider.send("evm_setAutomine", [enabled])
 }
 
 export async function increase(value: number) {
