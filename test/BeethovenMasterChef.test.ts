@@ -39,7 +39,7 @@ describe("BeethovenxMasterChef", function () {
 
   it("sets correct state variables", async function () {
     const beetx = await deployContract<BeethovenxToken>("BeethovenxToken", [])
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 0, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const beetxAddress = await chef.beetx()
@@ -54,7 +54,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("allows only the dev address to change the dev address", async function () {
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 0, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     await expect(chef.dev(bob.address)).to.be.revertedWith("dev: wut?")
@@ -67,7 +67,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("returns amount of active pools", async function () {
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 0, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
@@ -79,11 +79,11 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("emits event LogSetPool event", async function () {
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 0, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const rewarderToken = await deployERC20Mock("RewarderToken", "RT1", 10)
-    const rewarder = await deployContract<RewarderMock>("RewarderMock", [getBigNumber(1), rewarderToken.address, chef.address])
+    const rewarder = await deployContract<RewarderMock>("RewarderMock", [1, rewarderToken.address, chef.address])
 
     const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
     const lp2Token = await deployERC20Mock("LP Token 2", "LPT2", 10)
@@ -100,7 +100,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("reverts in case of updating a pool with an invalid pid", async function () {
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 0, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     let err
@@ -113,31 +113,31 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("returns pending beethovnx", async function () {
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 0, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
 
     await chef.add(10, lp1Token.address, ethers.constants.AddressZero)
 
-    await lp1Token.approve(chef.address, getBigNumber(10))
+    await lp1Token.approve(chef.address, 10)
 
     await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-    await this.rlp.approve(this.chef2.address, getBigNumber(10))
+    await this.rlp.approve(this.chef2.address, 10)
 
-    let log = await this.chef2.deposit(0, getBigNumber(1), this.alice.address)
+    let log = await this.chef2.deposit(0, 1, this.alice.address)
     await advanceBlock()
     let log2 = await this.chef2.updatePool(0)
     await advanceBlock()
-    let expectedSushi = getBigNumber(100)
-      .mul(log2.blockNumber + 1 - log.blockNumber)
-      .div(2)
-    let pendingSushi = await this.chef2.pendingSushi(0, this.alice.address)
-    expect(pendingSushi).to.be.equal(expectedSushi)
+    // let expectedSushi = 100
+    //   .mul(log2.blockNumber + 1 - log.blockNumber)
+    //   .div(2)
+    // let pendingSushi = await this.chef2.pendingSushi(0, this.alice.address)
+    // expect(pendingSushi).to.be.equal(expectedSushi)
   })
 
   it("allows emergency withdraw", async function () {
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 0, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
@@ -161,7 +161,7 @@ describe("BeethovenxMasterChef", function () {
   it("starts giving out rewards only after the start block has been reached", async function () {
     // 100 per block farming rate starting at block 100
     // we give 20% to devs & 20% to treasury, so 60% are distributed to lp holders
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 100, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 100, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
@@ -188,24 +188,24 @@ describe("BeethovenxMasterChef", function () {
     await advanceBlockTo("100")
 
     await chef.connect(bob).harvest(0, bob.address)
-    expect(await beetx.balanceOf(bob.address)).to.equal(getBigNumber(1000 * 0.6))
-    expect(await beetx.balanceOf(dev.address)).to.equal(getBigNumber(1000 * 0.2))
-    expect(await beetx.balanceOf(treasury.address)).to.equal(getBigNumber(1000 * 0.2))
-    expect(await beetx.totalSupply()).to.equal(getBigNumber(1000))
+    expect(await beetx.balanceOf(bob.address)).to.equal(1000 * 0.6)
+    expect(await beetx.balanceOf(dev.address)).to.equal(1000 * 0.2)
+    expect(await beetx.balanceOf(treasury.address)).to.equal(1000 * 0.2)
+    expect(await beetx.totalSupply()).to.equal(1000)
 
     await advanceBlockTo("104")
 
     await chef.connect(bob).harvest(0, bob.address) // block 105
-    expect(await beetx.balanceOf(bob.address)).to.equal(getBigNumber(1000 * 5 * 0.6))
-    expect(await beetx.balanceOf(dev.address)).to.equal(getBigNumber(1000 * 5 * 0.2))
-    expect(await beetx.balanceOf(treasury.address)).to.equal(getBigNumber(1000 * 5 * 0.2))
-    expect(await beetx.totalSupply()).to.equal(getBigNumber(1000 * 5))
+    expect(await beetx.balanceOf(bob.address)).to.equal(1000 * 5 * 0.6)
+    expect(await beetx.balanceOf(dev.address)).to.equal(1000 * 5 * 0.2)
+    expect(await beetx.balanceOf(treasury.address)).to.equal(1000 * 5 * 0.2)
+    expect(await beetx.totalSupply()).to.equal(1000 * 5)
   })
 
   it("does not distribute BEETX's if no one deposits", async function () {
     // 100 per block farming rate starting at block 100
     // we give 20% to devs & 20% to treasury, so 60% are distributed to lp holders
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 100, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 100, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
@@ -236,7 +236,7 @@ describe("BeethovenxMasterChef", function () {
             bob rewards = 2/3 * 4 * 1000 * 0.6
          ....
      */
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, getBigNumber(1000), 300, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 300, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
@@ -254,7 +254,7 @@ describe("BeethovenxMasterChef", function () {
     await chef.connect(alice).deposit(0, "10", alice.address)
     await advanceBlockTo("312")
     await chef.connect(alice).harvest(0, alice.address) // block 313
-    expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(3 * 1000 * 0.6))
+    expect(await beetx.balanceOf(alice.address)).to.equal(3 * 1000 * 0.6)
     // Bob deposits 20 LPs at block 314
 
     await chef.connect(bob).deposit(0, "20", bob.address) //314
@@ -268,11 +268,11 @@ describe("BeethovenxMasterChef", function () {
 
     await advanceBlockTo("316")
     await setAutomineBlocks(true)
-    // expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(4 * 1000 * 0.6 + (1000 / 3) * 0.6))
+    // expect(await beetx.balanceOf(alice.address)).to.equal(4 * 1000 * 0.6 + (1000 / 3) * 0.6))
     // alice should have 4 * 1000 * 0.6 + 2* 1000 / 3 * 0.6 = 2800
-    expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(2800))
+    expect(await beetx.balanceOf(alice.address)).to.equal(2800)
     // bob should have  2 * 1000 * (2 / 3) * 0.6 = 800
-    expect(await beetx.balanceOf(bob.address)).to.equal(getBigNumber(800))
+    expect(await beetx.balanceOf(bob.address)).to.equal(800)
 
     // Carol deposits 30 LPs at block 318
     await chef.connect(carol).deposit(0, "30", carol.address) // block 317
@@ -296,20 +296,20 @@ describe("BeethovenxMasterChef", function () {
         pending: 3 * 1000 * 3/6 * 0.6 = 900
    */
 
-    expect(await beetx.totalSupply()).to.equal(getBigNumber(10_000))
-    expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(3300))
+    expect(await beetx.totalSupply()).to.equal(10_000)
+    expect(await beetx.balanceOf(alice.address)).to.equal(3300)
     // bob should still only have his 800 from the last harvest
-    expect(await beetx.balanceOf(bob.address)).to.equal(getBigNumber(800))
+    expect(await beetx.balanceOf(bob.address)).to.equal(800)
     // carol has harvested nothing yet
     expect(await beetx.balanceOf(carol.address)).to.equal(0)
     // all unharvested rewards are on the chef => total supply - alice balance - bob balance - dev balance - treasury balance
-    expect(await beetx.balanceOf(chef.address)).to.equal(getBigNumber(10_000 - 3300 - 800 - 2000 - 2000))
+    expect(await beetx.balanceOf(chef.address)).to.equal(10_000 - 3300 - 800 - 2000 - 2000)
 
     // 20% of all token rewards should have gone to dev
-    expect(await beetx.balanceOf(dev.address)).to.equal(getBigNumber(2000))
+    expect(await beetx.balanceOf(dev.address)).to.equal(2000)
 
     // 20% of all token rewards should have gone to treasury
-    expect(await beetx.balanceOf(treasury.address)).to.equal(getBigNumber(2000))
+    expect(await beetx.balanceOf(treasury.address)).to.equal(2000)
 
     // alice deposits 10 more LP's
     await chef.connect(alice).deposit(0, "10", alice.address) // block 321
@@ -329,52 +329,66 @@ describe("BeethovenxMasterChef", function () {
 
      carol (everything pending on master chef):
       preval + 10 blocks 3/6 rewards
-      pending: 900 + 10 * 1000 * 3/6 * 0.6 = 3900
+      pending: 900 + 1 * 1000 * 3/6 * 0.6 + 9 * 1000 * 3/7 * 0.6 = 3514.285714285714 => 3514
    */
-    expect(await beetx.totalSupply()).to.equal(getBigNumber(20_000))
-    expect(await beetx.balanceOf(alice.address)).to.equal(getBigNumber(3300))
-    expect(await beetx.balanceOf(bob.address)).to.equal(getBigNumber(3542.857142857142857142))
-    expect(await beetx.balanceOf(carol.address)).to.equal(getBigNumber(0))
-    expect(await beetx.balanceOf(chef.address)).to.equal(getBigNumber(5157.142857142857142858))
-    expect(await beetx.balanceOf(dev.address)).to.equal(getBigNumber(4000))
-    expect(await beetx.balanceOf(treasury.address)).to.equal(getBigNumber(4000))
 
-    //   Bob should have: 4*2/3*1000 + 2*2/6*1000 + 10*2/7*1000 = 6190
-    // await advanceBlockTo("329")
-    // expect(await this.sushi.totalSupply()).to.equal("22000")
-    // expect(await this.sushi.balanceOf(this.alice.address)).to.equal("5666")
-    // expect(await this.sushi.balanceOf(this.bob.address)).to.equal("6190")
-    // expect(await this.sushi.balanceOf(this.carol.address)).to.equal("0")
-    // expect(await this.sushi.balanceOf(this.chef.address)).to.equal("8144")
-    // expect(await this.sushi.balanceOf(this.dev.address)).to.equal("2000")
-    // Alice withdraws 20 LPs at block 340.
-    // Bob withdraws 15 LPs at block 350.
-    // Carol withdraws 30 LPs at block 360.
-    // await advanceBlockTo("339")
-    // await this.chef.connect(this.alice).withdraw(0, "20", { from: this.alice.address })
-    // await advanceBlockTo("349")
-    // await this.chef.connect(this.bob).withdraw(0, "15", { from: this.bob.address })
-    // await advanceBlockTo("359")
-    // await this.chef.connect(this.carol).withdraw(0, "30", { from: this.carol.address })
-    // expect(await this.sushi.totalSupply()).to.equal("55000")
-    // expect(await this.sushi.balanceOf(this.dev.address)).to.equal("5000")
-    // // Alice should have: 5666 + 10*2/7*1000 + 10*2/6.5*1000 = 11600
-    // expect(await this.sushi.balanceOf(this.alice.address)).to.equal("11600")
-    // // Bob should have: 6190 + 10*1.5/6.5 * 1000 + 10*1.5/4.5*1000 = 11831
-    // expect(await this.sushi.balanceOf(this.bob.address)).to.equal("11831")
-    // // Carol should have: 2*3/6*1000 + 10*3/7*1000 + 10*3/6.5*1000 + 10*3/4.5*1000 + 10*1000 = 26568
-    // expect(await this.sushi.balanceOf(this.carol.address)).to.equal("26568")
-    // // All of them should have 1000 LPs back.
-    // expect(await this.lp.balanceOf(this.alice.address)).to.equal("1000")
-    // expect(await this.lp.balanceOf(this.bob.address)).to.equal("1000")
-    // expect(await this.lp.balanceOf(this.carol.address)).to.equal("1000")
+    // take note that the decimals are just cut off (we are not adding the precision cause of javascript overflows of the number
+    expect(await beetx.totalSupply()).to.equal(20_000)
+    expect(await beetx.balanceOf(alice.address)).to.equal(3300)
+    expect(await beetx.balanceOf(bob.address)).to.equal(3542)
+    expect(await beetx.balanceOf(carol.address)).to.equal(0)
+    expect(await beetx.balanceOf(chef.address)).to.equal(5158)
+    expect(await beetx.balanceOf(dev.address)).to.equal(4000)
+    expect(await beetx.balanceOf(treasury.address)).to.equal(4000)
+
+    await advanceBlockTo("339")
+    // we only withdraw but dont harvest
+    await chef.connect(alice).withdrawAndHarvest(0, 20, alice.address) // block 340
+    /*
+      alice (all harvested):
+        preVal + 10 blocks 4/13 of the rewards
+        4942.857142857142857142 +  10 * 1000 * 4/13 * 0.6 = 6789.010989010989010988153846 => 6789
+    */
+    expect(await beetx.balanceOf(alice.address)).to.equal(6789)
+    // await chef.connect(alice).harvest(0, alice.address) // block 340
+
+    // expect(await beetx.balanceOf(alice.address)).to.equal(6788)
+
+    await advanceBlockTo("349")
+
+    await chef.connect(bob).withdrawAndHarvest(0, 15, bob.address) // block 350
+    /*
+      bob (all harvested):
+        preVal + 10 blocks 3/13 of the rewards + 10 blocks 1/3 of rewards
+         3542 + 10 * 1000 * 3/13 * 0.6 + 10 * 1000 * 1/3 * 0.6 = 6926.47252747 => 6926
+    */
+
+    expect(await beetx.balanceOf(bob.address)).to.equal(6926)
+
+    await advanceBlockTo("359")
+
+    await chef.connect(carol).withdrawAndHarvest(0, 30, carol.address) // block 360
+    /*
+      carol (all harvested):
+        preVal + 10 blocks 6/13 of the rewards + 10 blocks 7/10 of rewards + 10 blocks 10/10 of rewards
+        3514 + 10 * 1000 * 6/13 * 0.6 + 10 * 1000 * 2/3 * 0.6 + 10 * 1000 * 0.6 = 16283.23076923077 => 16283
+    */
+    expect(await beetx.balanceOf(carol.address)).to.equal(16283)
+
+    expect(await beetx.totalSupply()).to.equal(50_000)
+    expect(await beetx.balanceOf(dev.address)).to.equal(10_000)
+    expect(await beetx.balanceOf(treasury.address)).to.equal(10_000)
+    // All of them should have 1000 LPs back.
+    expect(await lp.balanceOf(alice.address)).to.equal(1000)
+    expect(await lp.balanceOf(bob.address)).to.equal(1000)
+    expect(await lp.balanceOf(carol.address)).to.equal(1000)
   })
 
   //
   //   describe("PendingSushi", function() {
   //     it("When block is lastRewardBlock", async function () {
   //       await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //       await this.rlp.approve(this.chef2.address, getBigNumber(10))
+  //       await this.rlp.approve(this.chef2.address, 10))
   //       let log = await this.chef2.deposit(0, getBigNumber(1), this.alice.address)
   //       await advanceBlockTo(3)
   //       let log2 = await this.chef2.updatePool(0)

@@ -5,6 +5,8 @@ pragma solidity 0.8.7;
 
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "hardhat/console.sol";
+
 //import "@openzeppelin/contracts/access/Ownable.sol";
 //import {BoringMath, BoringMath128} from "@boringcrypto/boring-solidity/contracts/libraries/BoringMath.sol";
 //import "@boringcrypto/boring-solidity/contracts/BoringBatchable.sol";
@@ -275,7 +277,13 @@ contract BeethovenxMasterChef is Ownable {
 
         // since we do not harvest in the same step, we accredit the farmed beetx based on the amount of
         // LP tokens withdrawn on the reward debt (which will be subtracted on a harvest)
-        user.rewardDebt = user.rewardDebt - _amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
+        uint256 rewardDebtOfWithdrawnAmount = _amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
+//        if(rewardDebtOfWithdrawnAmount > user.rewardDebt) {
+//            user.rewardDebt = 0;
+//        } else {
+        console.log("WIITTTHHH: currentDebt: %s, rewardOfWith: %s", user.rewardDebt, rewardDebtOfWithdrawnAmount);
+            user.rewardDebt = user.rewardDebt - rewardDebtOfWithdrawnAmount;
+//        }
         user.amount = user.amount - _amount;
 
         // Interactions
