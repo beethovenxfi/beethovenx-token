@@ -1,31 +1,20 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity 0.8.7;
-//pragma experimental ABIEncoderV2;
 
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "hardhat/console.sol";
-
-//import "@openzeppelin/contracts/access/Ownable.sol";
-//import {BoringMath, BoringMath128} from "@boringcrypto/boring-solidity/contracts/libraries/BoringMath.sol";
-//import "@boringcrypto/boring-solidity/contracts/BoringBatchable.sol";
-//import {BoringERC20, IERC20} from "@boringcrypto/boring-solidity/contracts/libraries/BoringERC20.sol";
 import "./BeethovenxToken.sol";
-//import "./libraries/SignedSafeMath.sol";
 import "./interfaces/IRewarder.sol";
-//import "./libraries/SafeERC20.sol";
-//import {IERC20} from "./interfaces/IERC20.sol";
-//import "./libraries/SafeERC20.sol";
-//import "./libraries/SafeERC20.sol";
-//import "./libraries/SafeERC20.sol";
-//import "./libraries/SafeMath.sol";
 
 
-// Have fun reading it. Hopefully it's bug-free. God bless.
+// Have fun reading it. Hopefully it's still bug-free
 contract BeethovenxMasterChef is Ownable {
-//    using BoringMath128 for uint128;
     using  SafeERC20 for IERC20;
+    using EnumerableSet for EnumerableSet.AddressSet;
+
     // Info of each user.
     struct UserInfo {
         uint256 amount; // How many LP tokens the user has provided.
@@ -44,7 +33,6 @@ contract BeethovenxMasterChef is Ownable {
     }
     // Info of each pool.
     struct PoolInfo {
-//        IERC20 lpToken; // Address of LP token contract.
         // we have a fixed number of BEETX tokens released per block, each pool gets his fraction based on the allocPoint
         uint256 allocPoint; // How many allocation points assigned to this pool. the fraction  BEETXs to distribute per block.
         uint256 lastRewardBlock; // Last block number that BEETXs distribution occurs.
@@ -53,10 +41,10 @@ contract BeethovenxMasterChef is Ownable {
     // The BEETX TOKEN!
     BeethovenxToken public beetx;
     // Dev address.
-    address public devaddr;
+    address public devAddress;
 
     // Treasury address.
-    address public treasuryaddr;
+    address public treasuryAddress;
 
     // BEETHOVEn tokens created per block.
     uint256 public beetxPerBlock;
@@ -72,7 +60,10 @@ contract BeethovenxMasterChef is Ownable {
     PoolInfo[] public poolInfo;
     // Info of each user that stakes LP tokens per pool. poolId => address => userInfo
     /// @notice Address of the LP token for each MCV2 pool.
-    IERC20[] public lpToken;
+    IERC20[] public lpTokens;
+
+    EnumerableSet.AddressSet private lpTokenAddresses;
+
 
     /// @notice Address of each `IRewarder` contract in MCV2.
     IRewarder[] public rewarder;
@@ -95,8 +86,8 @@ contract BeethovenxMasterChef is Ownable {
 
     constructor(
         BeethovenxToken _beethovenx,
-        address _devaddr,
-        address _treasuryaddr,
+        address _devAddress,
+        address _treasuryAddress,
         uint256 _beetxPerBlock,
         uint256 _startBlock,
         uint256 _devPercent,
@@ -115,8 +106,8 @@ contract BeethovenxMasterChef is Ownable {
             "constructor: total percent over max"
         );
         beetx = _beethovenx;
-        devaddr = _devaddr;
-        treasuryaddr = _treasuryaddr;
+        devAddress = _devAddress;
+        treasuryAddress = _treasuryAddress;
         beetxPerBlock = _beetxPerBlock;
         startBlock = _startBlock;
         devPercent = _devPercent;
@@ -134,10 +125,24 @@ contract BeethovenxMasterChef is Ownable {
         IERC20 _lpToken,
         IRewarder _rewarder
     ) public onlyOwner {
+        require(
+            Address.isContract(address(_lpToken)),
+            "add: LP token must be a valid contract"
+        );
+        require(
+            Address.isContract(address(_rewarder)) ||
+            address(_rewarder) == address(0),
+            "add: rewarder must be contract or zero"
+        );
+        require(!lpTokenAddresses.contains(address(_lpToken)), "add: LP already added");
+
+        massUpdatePools();
+
         uint256 lastRewardBlock =
             block.number > startBlock ? block.number : startBlock;
         totalAllocPoint = totalAllocPoint + _allocPoint;
-        lpToken.push(_lpToken);
+        lpTokens.push(_lpToken);
+        lpTokenAddresses.add(address(_lpToken));
         rewarder.push(_rewarder);
 
         poolInfo.push(
@@ -147,7 +152,11 @@ contract BeethovenxMasterChef is Ownable {
                 accBeetxPerShare: 0
             })
         );
-        emit LogPoolAddition(lpToken.length - 1, _allocPoint, _lpToken, _rewarder);
+        emit LogPoolAddition(lpTokens.length - 1, _allocPoint, _lpToken, _rewarder);
+    }
+
+    function _lpTokensContain(IERC20 lpToken) internal pure {
+
     }
 
     // Update the given pool's BEETHOVEN allocation point. Can only be called by the owner.
@@ -157,6 +166,13 @@ contract BeethovenxMasterChef is Ownable {
         IRewarder _rewarder,
         bool overwrite
     ) public onlyOwner {
+        require(
+            Address.isContract(address(_rewarder)) ||
+            address(_rewarder) == address(0),
+            "set: rewarder must be contract or zero"
+        );
+        massUpdatePools();
+
         totalAllocPoint = totalAllocPoint - poolInfo[_pid].allocPoint + _allocPoint;
         poolInfo[_pid].allocPoint = _allocPoint;
         if (overwrite) { rewarder[_pid] = _rewarder; }
@@ -174,17 +190,9 @@ contract BeethovenxMasterChef is Ownable {
         // how many beethovenxs per lp token
         uint256 accBeetxPerShare = pool.accBeetxPerShare;
         // total staked lp tokens in this pool
-        uint256 lpSupply = lpToken[_pid].balanceOf(address(this));
+        uint256 lpSupply = lpTokens[_pid].balanceOf(address(this));
 
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
-            // just use blocks ?
-//            uint256 multiplier =
-//                getMultiplier(pool.lastRewardBlock, block.number);
-//
-//            uint256 beethovenxReward =
-//                multiplier.mul(beethovenxPerBlock).mul(pool.allocPoint).div(
-//                    totalAllocPoint
-//                );
             uint256 blocksSinceLastReward = block.number - pool.lastRewardBlock;
             // based on the pool weight (allocation points) we calculate the beetx rewarded for this specific pool
             uint256 beetxRewards = blocksSinceLastReward * beetxPerBlock * pool.allocPoint / totalAllocPoint;
@@ -216,15 +224,11 @@ contract BeethovenxMasterChef is Ownable {
 
         if (block.number > pool.lastRewardBlock) {
             // total lp tokens staked for this pool
-            uint256 lpSupply = lpToken[_pid].balanceOf(address(this));
+            uint256 lpSupply = lpTokens[_pid].balanceOf(address(this));
             if (lpSupply > 0) {
 //                uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
                 uint256 blocksSinceLastReward = block.number - pool.lastRewardBlock;
                 // rewards for this pool based on his allocation points
-//                uint256 beethovenxReward =
-//                    multiplier.mul(beethovenxPerBlock).mul(pool.allocPoint).div(
-//                        totalAllocPoint
-//                    );
 
                 uint256 beetxRewards = blocksSinceLastReward * beetxPerBlock * pool.allocPoint / totalAllocPoint;
 
@@ -234,8 +238,8 @@ contract BeethovenxMasterChef is Ownable {
 
                 uint256 beetxRewardsForPool = beetxRewards * poolPercent / 1000;
 
-                beetx.mint(devaddr, beetxRewards * devPercent / 1000);
-                beetx.mint(treasuryaddr, beetxRewards * treasuryPercent / 1000);
+                beetx.mint(devAddress, beetxRewards * devPercent / 1000);
+                beetx.mint(treasuryAddress, beetxRewards * treasuryPercent / 1000);
                 beetx.mint(address(this), beetxRewardsForPool);
                 pool.accBeetxPerShare = pool.accBeetxPerShare + (beetxRewardsForPool * ACC_BEETX_PRECISION / lpSupply);
             }
@@ -257,14 +261,13 @@ contract BeethovenxMasterChef is Ownable {
         // note that only the accBeetxPerShare have the precision applied
         user.rewardDebt = user.rewardDebt + _amount * pool.accBeetxPerShare / ACC_BEETX_PRECISION;
 
-        // Interactions
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
             _rewarder.onBeetxReward(_pid, _to, _to, 0, user.amount);
         }
 
 
-        lpToken[_pid].safeTransferFrom( msg.sender, address(this), _amount);
+        lpTokens[_pid].safeTransferFrom( msg.sender, address(this), _amount);
 
         emit Deposit(msg.sender, _pid, _amount, _to);
     }
@@ -320,7 +323,7 @@ contract BeethovenxMasterChef is Ownable {
             _rewarder.onBeetxReward(_pid, msg.sender, _to, _pendingBeetx, user.amount);
         }
 
-        lpToken[_pid].safeTransfer(_to, _amount);
+        lpTokens[_pid].safeTransfer(_to, _amount);
 
         emit Withdraw(msg.sender, _pid, _amount, _to);
         emit Harvest(msg.sender, _pid, _pendingBeetx);
@@ -339,7 +342,7 @@ contract BeethovenxMasterChef is Ownable {
         }
 
         // Note: transfer can fail or succeed if `amount` is zero.
-        lpToken[_pid].safeTransfer(_to, amount);
+        lpTokens[_pid].safeTransfer(_to, amount);
         emit EmergencyWithdraw(msg.sender, _pid, amount, _to);
     }
 
@@ -355,8 +358,8 @@ contract BeethovenxMasterChef is Ownable {
 
     // Update dev address by the previous dev.
     function dev(address _devaddr) public {
-        require(msg.sender == devaddr, "dev: wut?");
-        devaddr = _devaddr;
+        require(msg.sender == devAddress, "dev: wut?");
+        devAddress = _devaddr;
     }
 
     function setDevPercent(uint256 _newDevPercent) public onlyOwner {
@@ -369,6 +372,12 @@ contract BeethovenxMasterChef is Ownable {
             "setDevPercent: total percent over max"
         );
         devPercent = _newDevPercent;
+    }
+
+    // Update treasury address by the previous treasury.
+    function treasury(address _treasuryAddress) public {
+        require(msg.sender == treasuryAddress, "setTreasuryAddress: wut?");
+        treasuryAddress = _treasuryAddress;
     }
 
     function setTreasuryPercent(uint256 _newTreasuryPercent) public onlyOwner {

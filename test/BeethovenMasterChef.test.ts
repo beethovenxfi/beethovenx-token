@@ -13,6 +13,8 @@ import { ethers, network } from "hardhat"
 import { BeethovenxMasterChef, BeethovenxToken, ERC20Mock, RewarderMock } from "../types"
 import { Signer } from "ethers"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
+import { executionAsyncId } from "async_hooks"
+import { getSigner } from "@nomiclabs/hardhat-ethers/internal/helpers"
 
 describe("BeethovenxMasterChef", function () {
   let beetx: BeethovenxToken
@@ -36,15 +38,59 @@ describe("BeethovenxMasterChef", function () {
   beforeEach(async function () {
     beetx = await deployContract("BeethovenxToken", [])
   })
+  it("reverts contract creation if dev and treasury percents don't meet criteria", async function () {
+    // Invalid dev percent failure
+    await expect(deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 1100, 200)).to.be.revertedWith(
+      "constructor: invalid dev percent value"
+    )
+
+    // Invalid treasury percent failure
+    await expect(deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 1100)).to.be.revertedWith(
+      "constructor: invalid treasury percent value"
+    )
+
+    // Invalid treasury percent failure
+    await expect(deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 300, 800)).to.be.revertedWith(
+      "constructor: total percent over max"
+    )
+  })
+  it("checks dev & treasury percents are set correctly", async function () {
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
+    await beetx.transferOwnership(chef.address)
+
+    await chef.setDevPercent(100)
+    await chef.setTreasuryPercent(100)
+    expect(await chef.devPercent()).to.equal("100")
+    expect(await chef.treasuryPercent()).to.equal("100")
+    // We don't test negative values because function only takes in unsigned ints
+    await expect(chef.setDevPercent("1200")).to.be.revertedWith("setDevPercent: invalid percent value")
+    await expect(chef.setDevPercent("950")).to.be.revertedWith("setDevPercent: total percent over max")
+    await expect(chef.setTreasuryPercent("1200")).to.be.revertedWith("setTreasuryPercent: invalid percent value")
+    await expect(chef.setTreasuryPercent("950")).to.be.revertedWith("setTreasuryPercent: total percent over max")
+  })
+
+  it("should allow dev & treasury address to update themselves", async function () {
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
+    await beetx.transferOwnership(chef.address)
+
+    expect(await chef.devAddress()).to.equal(dev.address)
+
+    await expect(chef.connect(bob).dev(bob.address)).to.be.revertedWith("dev: wut?")
+    await chef.connect(dev).dev(bob.address)
+    expect(await chef.devAddress()).to.equal(bob.address)
+
+    await expect(chef.connect(bob).treasury(bob.address)).to.be.revertedWith("setTreasuryAddress: wut?")
+    await chef.connect(treasury).treasury(bob.address)
+    expect(await chef.treasuryAddress()).to.equal(bob.address)
+  })
 
   it("sets correct state variables", async function () {
-    const beetx = await deployContract<BeethovenxToken>("BeethovenxToken", [])
     const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const beetxAddress = await chef.beetx()
-    const devAddress = await chef.devaddr()
-    const treasuryAddress = await chef.treasuryaddr()
+    const devAddress = await chef.devAddress()
+    const treasuryAddress = await chef.treasuryAddress()
     const ownerAddress = await beetx.owner()
 
     expect(beetxAddress).to.equal(beetx.address)
@@ -60,13 +106,13 @@ describe("BeethovenxMasterChef", function () {
     await expect(chef.dev(bob.address)).to.be.revertedWith("dev: wut?")
 
     await chef.connect(dev).dev(bob.address)
-    expect(await chef.devaddr()).to.equal(bob.address)
+    expect(await chef.devAddress()).to.equal(bob.address)
 
     await chef.connect(bob).dev(alice.address)
-    expect(await chef.devaddr()).to.equal(alice.address)
+    expect(await chef.devAddress()).to.equal(alice.address)
   })
 
-  it("returns amount of active pools", async function () {
+  it("returns amount of pools", async function () {
     const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
@@ -78,25 +124,27 @@ describe("BeethovenxMasterChef", function () {
     expect(await chef.poolLength()).to.be.equal(2)
   })
 
-  it("emits event LogSetPool event", async function () {
+  it("updates pool with allocation point and rewarder", async function () {
     const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const rewarderToken = await deployERC20Mock("RewarderToken", "RT1", 10)
     const rewarder = await deployContract<RewarderMock>("RewarderMock", [1, rewarderToken.address, chef.address])
+    const rewarder2 = await deployContract<RewarderMock>("RewarderMock", [1, rewarderToken.address, chef.address])
 
     const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
     const lp2Token = await deployERC20Mock("LP Token 2", "LPT2", 10)
 
     await chef.add(10, lp1Token.address, rewarder.address)
     await chef.add(10, lp2Token.address, rewarder.address)
-    await expect(chef.set(0, 10, ethers.constants.AddressZero, false)).to.emit(chef, "LogSetPool").withArgs(0, 10, rewarder.address, false)
+    await expect(chef.set(0, 15, ethers.constants.AddressZero, false)).to.emit(chef, "LogSetPool").withArgs(0, 15, rewarder.address, false)
 
-    const dummyAddressForRewarder = (await ethers.getSigners())[10]
+    expect((await chef.poolInfo(0)).allocPoint).to.equal(15)
+    expect(await chef.rewarder(0)).to.equal(rewarder.address)
 
-    await expect(chef.set(0, 10, dummyAddressForRewarder.address, true))
-      .to.emit(chef, "LogSetPool")
-      .withArgs(0, 10, dummyAddressForRewarder.address, true)
+    await expect(chef.set(0, 18, rewarder2.address, true)).to.emit(chef, "LogSetPool").withArgs(0, 18, rewarder2.address, true)
+    expect((await chef.poolInfo(0)).allocPoint).to.equal(18)
+    expect(await chef.rewarder(0)).to.equal(rewarder2.address)
   })
 
   it("reverts in case of updating a pool with an invalid pid", async function () {
@@ -112,28 +160,50 @@ describe("BeethovenxMasterChef", function () {
     expect(err).to.exist
   })
 
+  it("reverts when adding an lp token which was already added", async () => {
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
+    await beetx.transferOwnership(chef.address)
+
+    const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
+    await lp1Token.transfer(alice.address, 10)
+
+    await chef.add(10, lp1Token.address, ethers.constants.AddressZero)
+
+    await expect(chef.add(10, lp1Token.address, ethers.constants.AddressZero)).to.be.revertedWith("add: LP already added")
+  })
+
+  it("reverts when adding a pool with an LP token address which is not a contract", async () => {
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
+    await beetx.transferOwnership(chef.address)
+
+    await expect(chef.add(10, carol.address, ethers.constants.AddressZero)).to.be.revertedWith("add: LP token must be a valid contract")
+  })
+
+  it("reverts when adding a pool with a rewarder address which is not a contract", async () => {
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
+    await beetx.transferOwnership(chef.address)
+
+    const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
+    await lp1Token.transfer(alice.address, 10)
+
+    await expect(chef.add(10, lp1Token.address, carol.address)).to.be.revertedWith("add: rewarder must be contract or zero")
+  })
+
   it("returns pending beethovnx", async function () {
     const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 0, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
+    await lp1Token.transfer(alice.address, 10)
 
     await chef.add(10, lp1Token.address, ethers.constants.AddressZero)
 
-    await lp1Token.approve(chef.address, 10)
+    await lp1Token.connect(alice).approve(chef.address, 10)
 
-    await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-    await this.rlp.approve(this.chef2.address, 10)
-
-    let log = await this.chef2.deposit(0, 1, this.alice.address)
-    await advanceBlock()
-    let log2 = await this.chef2.updatePool(0)
-    await advanceBlock()
-    // let expectedSushi = 100
-    //   .mul(log2.blockNumber + 1 - log.blockNumber)
-    //   .div(2)
-    // let pendingSushi = await this.chef2.pendingSushi(0, this.alice.address)
-    // expect(pendingSushi).to.be.equal(expectedSushi)
+    const depositionPoint = await chef.connect(alice).deposit(0, 1, alice.address)
+    await advanceBlockTo((depositionPoint.blockNumber! + 9).toString())
+    await chef.updatePool(0)
+    expect(await chef.pendingBeetx(0, alice.address)).to.equal(10 * 1000 * 0.6)
   })
 
   it("allows emergency withdraw", async function () {
@@ -154,14 +224,16 @@ describe("BeethovenxMasterChef", function () {
     await advanceBlock()
     await chef.updatePool(0)
 
-    await chef.connect(bob).emergencyWithdraw(0, bob.address)
+    await expect(chef.connect(bob).emergencyWithdraw(0, bob.address))
+      .to.emit(chef, "EmergencyWithdraw")
+      .withArgs(bob.address, 0, 100, bob.address)
     expect(await lp.balanceOf(bob.address)).to.equal("1000")
   })
 
   it("starts giving out rewards only after the start block has been reached", async function () {
     // 100 per block farming rate starting at block 100
     // we give 20% to devs & 20% to treasury, so 60% are distributed to lp holders
-    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 100, 200, 200)
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 150, 200, 200)
     await beetx.transferOwnership(chef.address)
 
     const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
@@ -173,19 +245,19 @@ describe("BeethovenxMasterChef", function () {
     await chef.add("100", lp.address, ethers.constants.AddressZero)
 
     await chef.connect(bob).deposit(0, "100", bob.address)
-    await advanceBlockTo("89")
+    await advanceBlockTo("110")
 
     await chef.updatePool(0)
     expect(await beetx.balanceOf(bob.address)).to.equal("0")
-    await advanceBlockTo("94")
+    await advanceBlockTo("120")
 
     await chef.updatePool(0)
     expect(await beetx.balanceOf(bob.address)).to.equal("0")
-    await advanceBlockTo("99")
+    await advanceBlockTo("130")
 
     await chef.updatePool(0) // block 100
     expect(await beetx.balanceOf(bob.address)).to.equal("0")
-    await advanceBlockTo("100")
+    await advanceBlockTo("150")
 
     await chef.connect(bob).harvest(0, bob.address)
     expect(await beetx.balanceOf(bob.address)).to.equal(1000 * 0.6)
@@ -193,7 +265,7 @@ describe("BeethovenxMasterChef", function () {
     expect(await beetx.balanceOf(treasury.address)).to.equal(1000 * 0.2)
     expect(await beetx.totalSupply()).to.equal(1000)
 
-    await advanceBlockTo("104")
+    await advanceBlockTo("154")
 
     await chef.connect(bob).harvest(0, bob.address) // block 105
     expect(await beetx.balanceOf(bob.address)).to.equal(1000 * 5 * 0.6)
@@ -384,149 +456,41 @@ describe("BeethovenxMasterChef", function () {
     expect(await lp.balanceOf(carol.address)).to.equal(1000)
   })
 
-  //
-  //   describe("PendingSushi", function() {
-  //     it("When block is lastRewardBlock", async function () {
-  //       await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //       await this.rlp.approve(this.chef2.address, 10))
-  //       let log = await this.chef2.deposit(0, getBigNumber(1), this.alice.address)
-  //       await advanceBlockTo(3)
-  //       let log2 = await this.chef2.updatePool(0)
-  //       let expectedSushi = getBigNumber(100).mul(log2.blockNumber - log.blockNumber).div(2)
-  //       let pendingSushi = await this.chef2.pendingSushi(0, this.alice.address)
-  //       expect(pendingSushi).to.be.equal(expectedSushi)
-  //     })
-  //   })
-  //
-  //   describe("MassUpdatePools", function () {
-  //     it("Should call updatePool", async function () {
-  //       await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //       await advanceBlockTo(1)
-  //       await this.chef2.massUpdatePools([0])
-  //       //expect('updatePool').to.be.calledOnContract(); //not suported by heardhat
-  //       //expect('updatePool').to.be.calledOnContractWith(0); //not suported by heardhat
-  //
-  //     })
-  //
-  //     it("Updating invalid pools should fail", async function () {
-  //       let err;
-  //       try {
-  //         await this.chef2.massUpdatePools([0, 10000, 100000])
-  //       } catch (e) {
-  //         err = e;
-  //       }
-  //
-  //       assert.equal(err.toString(), "Error: VM Exception while processing transaction: invalid opcode")
-  //     })
-  // })
-  //
-  //   describe("Add", function () {
-  //     it("Should add pool with reward token multiplier", async function () {
-  //       await expect(this.chef2.add(10, this.rlp.address, this.rewarder.address))
-  //             .to.emit(this.chef2, "LogPoolAddition")
-  //             .withArgs(0, 10, this.rlp.address, this.rewarder.address)
-  //       })
-  //   })
-  //
-  //   describe("UpdatePool", function () {
-  //     it("Should emit event LogUpdatePool", async function () {
-  //       await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //       await advanceBlockTo(1)
-  //       await expect(this.chef2.updatePool(0))
-  //             .to.emit(this.chef2, "LogUpdatePool")
-  //             .withArgs(0, (await this.chef2.poolInfo(0)).lastRewardBlock,
-  //               (await this.rlp.balanceOf(this.chef2.address)),
-  //               (await this.chef2.poolInfo(0)).accSushiPerShare)
-  //     })
-  //
-  //     it("Should take else path", async function () {
-  //       await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //       await advanceBlockTo(1)
-  //       await this.chef2.batch(
-  //           [
-  //               this.chef2.interface.encodeFunctionData("updatePool", [0]),
-  //               this.chef2.interface.encodeFunctionData("updatePool", [0]),
-  //           ],
-  //           true
-  //       )
-  //     })
-  //   })
-  //
-  //   describe("Deposit", function () {
-  //     it("Depositing 0 amount", async function () {
-  //       await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //       await this.rlp.approve(this.chef2.address, getBigNumber(10))
-  //       await expect(this.chef2.deposit(0, getBigNumber(0), this.alice.address))
-  //             .to.emit(this.chef2, "Deposit")
-  //             .withArgs(this.alice.address, 0, 0, this.alice.address)
-  //     })
-  //
-  //     it("Depositing into non-existent pool should fail", async function () {
-  //       let err;
-  //       try {
-  //         await this.chef2.deposit(1001, getBigNumber(0), this.alice.address)
-  //       } catch (e) {
-  //         err = e;
-  //       }
-  //
-  //       assert.equal(err.toString(), "Error: VM Exception while processing transaction: invalid opcode")
-  //     })
-  //   })
-  //
-  //   describe("Withdraw", function () {
-  //     it("Withdraw 0 amount", async function () {
-  //       await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //       await expect(this.chef2.withdraw(0, getBigNumber(0), this.alice.address))
-  //             .to.emit(this.chef2, "Withdraw")
-  //             .withArgs(this.alice.address, 0, 0, this.alice.address)
-  //     })
-  //   })
-  //
-  //   describe("Harvest", function () {
-  //     it("Should give back the correct amount of SUSHI and reward", async function () {
-  //         await this.r.transfer(this.rewarder.address, getBigNumber(100000))
-  //         await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //         await this.rlp.approve(this.chef2.address, getBigNumber(10))
-  //         expect(await this.chef2.lpToken(0)).to.be.equal(this.rlp.address)
-  //         let log = await this.chef2.deposit(0, getBigNumber(1), this.alice.address)
-  //         await advanceBlockTo(20)
-  //         await this.chef2.harvestFromMasterChef()
-  //         let log2 = await this.chef2.withdraw(0, getBigNumber(1), this.alice.address)
-  //         let expectedSushi = getBigNumber(100).mul(log2.blockNumber - log.blockNumber).div(2)
-  //         expect((await this.chef2.userInfo(0, this.alice.address)).rewardDebt).to.be.equal("-"+expectedSushi)
-  //         await this.chef2.harvest(0, this.alice.address)
-  //         expect(await this.sushi.balanceOf(this.alice.address)).to.be.equal(await this.r.balanceOf(this.alice.address)).to.be.equal(expectedSushi)
-  //     })
-  //     it("Harvest with empty user balance", async function () {
-  //       await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //       await this.chef2.harvest(0, this.alice.address)
-  //     })
-  //
-  //     it("Harvest for SUSHI-only pool", async function () {
-  //       await this.chef2.add(10, this.rlp.address, ADDRESS_ZERO)
-  //       await this.rlp.approve(this.chef2.address, getBigNumber(10))
-  //       expect(await this.chef2.lpToken(0)).to.be.equal(this.rlp.address)
-  //       let log = await this.chef2.deposit(0, getBigNumber(1), this.alice.address)
-  //       await advanceBlock()
-  //       await this.chef2.harvestFromMasterChef()
-  //       let log2 = await this.chef2.withdraw(0, getBigNumber(1), this.alice.address)
-  //       let expectedSushi = getBigNumber(100).mul(log2.blockNumber - log.blockNumber).div(2)
-  //       expect((await this.chef2.userInfo(0, this.alice.address)).rewardDebt).to.be.equal("-"+expectedSushi)
-  //       await this.chef2.harvest(0, this.alice.address)
-  //       expect(await this.sushi.balanceOf(this.alice.address)).to.be.equal(expectedSushi)
-  //     })
-  //   })
-  //
-  //   describe("EmergencyWithdraw", function() {
-  //     it("Should emit event EmergencyWithdraw", async function () {
-  //       await this.r.transfer(this.rewarder.address, getBigNumber(100000))
-  //       await this.chef2.add(10, this.rlp.address, this.rewarder.address)
-  //       await this.rlp.approve(this.chef2.address, getBigNumber(10))
-  //       await this.chef2.deposit(0, getBigNumber(1), this.bob.address)
-  //       //await this.chef2.emergencyWithdraw(0, this.alice.address)
-  //       await expect(this.chef2.connect(this.bob).emergencyWithdraw(0, this.bob.address))
-  //       .to.emit(this.chef2, "EmergencyWithdraw")
-  //       .withArgs(this.bob.address, 0, getBigNumber(1), this.bob.address)
-  //     })
-  //   })
+  it("gives correct BEETX allocation to each pool", async function () {
+    /*
+      1000 beetx per block, start block 100, 20% dev & treadury each
+     */
+    const chef = await deployChef(beetx.address, dev.address, treasury.address, 1000, 100, 200, 200)
+    await beetx.transferOwnership(chef.address)
+
+    const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
+    const lp2 = await deployERC20Mock("Lp 2", "lp2", 10_000)
+
+    await lp.transfer(alice.address, "1000")
+    await lp2.transfer(bob.address, "1000")
+
+    await lp.connect(alice).approve(chef.address, "1000")
+    await lp2.connect(bob).approve(chef.address, "1000")
+    // Add first LP to the pool with allocation 1
+    await chef.add("10", lp.address, ethers.constants.AddressZero)
+    // Alice deposits 10 LPs at block 410
+    await advanceBlockTo("409")
+    await chef.connect(alice).deposit(0, "10", alice.address)
+    // Add LP2 to the pool with allocation 2 at block 420
+    await advanceBlockTo("419")
+    // await setAutomineBlocks(false)
+    // await chef.updatePool(0)
+    await chef.add("30", lp2.address, ethers.constants.AddressZero) // 420
+    expect(await chef.pendingBeetx(0, alice.address)).to.equal(6000)
+    // Bob deposits 10 LP2s at block 425
+    await advanceBlockTo("424")
+    await chef.connect(bob).deposit(1, "5", bob.address)
+    // Alice should have 6000 + 5*1/4*1000 * 0.6 = 7000 pending reward
+    expect(await chef.pendingBeetx(0, alice.address)).to.equal(6750)
+    await advanceBlockTo("430")
+    // At block 430. Bob should get 5*3/4*1000 * 0.6 = 2000.
+    // Alice 6750 + 5 * 1/4 * 1000 * 0.6 = 8000
+    expect(await chef.pendingBeetx(0, alice.address)).to.equal(7500)
+    expect(await chef.pendingBeetx(1, bob.address)).to.equal(2250)
+  })
 })
