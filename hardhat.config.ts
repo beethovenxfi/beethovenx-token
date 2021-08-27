@@ -18,10 +18,12 @@ import "./tasks"
 import { HardhatUserConfig } from "hardhat/types"
 import { removeConsoleLog } from "hardhat-preprocessor"
 
-const accounts = {
+/*const accounts = {
   mnemonic: process.env.MNEMONIC || "test test test test test test test test test test test junk",
   // accountsBalance: "990000000000000000000",
-}
+}*/
+
+const accounts = [process.env.DEPLOYER!, process.env.DEV!, process.env.TREASURY!];
 
 const config: HardhatUserConfig = {
   abiExporter: {
@@ -53,6 +55,9 @@ const config: HardhatUserConfig = {
       default: 1,
       // dev address mainnet
       // 1: "",
+    },
+    treasury: {
+      default: 2,
     },
   },
   networks: {
