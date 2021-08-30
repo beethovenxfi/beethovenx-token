@@ -1,6 +1,7 @@
 // hardhat.config.ts
 
 import "dotenv/config"
+import '@nomiclabs/hardhat-ethers';
 import "@nomiclabs/hardhat-etherscan"
 import "@nomiclabs/hardhat-solhint"
 import "@tenderly/hardhat-tenderly"
