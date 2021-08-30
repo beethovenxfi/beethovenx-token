@@ -20,13 +20,13 @@ contract BeethovenxMasterChef is Ownable {
         uint256 amount; // How many LP tokens the user has provided.
         uint256 rewardDebt; // Reward debt. See explanation below.
         //
-        // We do some fancy math here. Basically, any point in time, the amount of SUSHIs
+        // We do some fancy math here. Basically, any point in time, the amount of BEETX
         // entitled to a user but is pending to be distributed is:
         //
-        //   pending reward = (user.amount * pool.accBeethovenxPerShare) - user.rewardDebt
+        //   pending reward = (user.amount * pool.accBeetxPerShare) - user.rewardDebt
         //
         // Whenever a user deposits or withdraws LP tokens to a pool. Here's what happens:
-        //   1. The pool's `accBeethovenxPerShare` (and `lastRewardBlock`) gets updated.
+        //   1. The pool's `accBeetxPerShare` (and `lastRewardBlock`) gets updated.
         //   2. User receives the pending reward sent to his/her address.
         //   3. User's `amount` gets updated.
         //   4. User's `rewardDebt` gets updated.
@@ -46,7 +46,7 @@ contract BeethovenxMasterChef is Ownable {
     // Treasury address.
     address public treasuryAddress;
 
-    // BEETHOVEn tokens created per block.
+    // BEETX tokens created per block.
     uint256 public beetxPerBlock;
 
     uint256 private constant ACC_BEETX_PRECISION = 1e12;
@@ -59,17 +59,17 @@ contract BeethovenxMasterChef is Ownable {
     // Info of each pool.
     PoolInfo[] public poolInfo;
     // Info of each user that stakes LP tokens per pool. poolId => address => userInfo
-    /// @notice Address of the LP token for each MCV2 pool.
+    /// @notice Address of the LP token for each MCV pool.
     IERC20[] public lpTokens;
 
     EnumerableSet.AddressSet private lpTokenAddresses;
 
 
-    /// @notice Address of each `IRewarder` contract in MCV2.
+    /// @notice Address of each `IRewarder` contract in MCV.
     IRewarder[] public rewarder;
 
     mapping(uint256 => mapping(address => UserInfo)) public userInfo;
-    // Total allocation poitns. Must be the sum of all allocation points in all pools.
+    // Total allocation points. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
     // The block number when BEETX mining starts.
     uint256 public startBlock;
@@ -82,10 +82,10 @@ contract BeethovenxMasterChef is Ownable {
     event LogSetPool(uint256 indexed pid, uint256 allocPoint, IRewarder indexed rewarder, bool overwrite);
     event LogUpdatePool(uint256 indexed pid, uint256 lastRewardBlock, uint256 lpSupply, uint256 accBeetxPerShare);
     event SetDevAddress(address indexed oldAddress, address indexed newAddress);
-    event UpdateEmissionRate(address indexed user, uint256 _joePerSec);
+    event UpdateEmissionRate(address indexed user, uint256 _beetxPerSec);
 
     constructor(
-        BeethovenxToken _beethovenx,
+        BeethovenxToken _beetx,
         address _devAddress,
         address _treasuryAddress,
         uint256 _beetxPerBlock,
@@ -105,7 +105,7 @@ contract BeethovenxMasterChef is Ownable {
             _devPercent + _treasuryPercent <= 1000,
             "constructor: total percent over max"
         );
-        beetx = _beethovenx;
+        beetx = _beetx;
         devAddress = _devAddress;
         treasuryAddress = _treasuryAddress;
         beetxPerBlock = _beetxPerBlock;
@@ -119,7 +119,6 @@ contract BeethovenxMasterChef is Ownable {
     }
 
     // Add a new lp to the pool. Can only be called by the owner.
-    // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
     function add(
         uint256 _allocPoint,
         IERC20 _lpToken,
@@ -159,7 +158,7 @@ contract BeethovenxMasterChef is Ownable {
 
     }
 
-    // Update the given pool's BEETHOVEN allocation point. Can only be called by the owner.
+    // Update the given pool's BEETX allocation point. Can only be called by the owner.
     function set(
         uint256 _pid,
         uint256 _allocPoint,
@@ -179,7 +178,7 @@ contract BeethovenxMasterChef is Ownable {
         emit LogSetPool(_pid, _allocPoint, overwrite ? _rewarder : rewarder[_pid], overwrite);
     }
 
-    // View function to see pending BEETHOVENs on frontend.
+    // View function to see pending BEETXs on frontend.
     function pendingBeetx(uint256 _pid, address _user)
         external
         view
@@ -187,7 +186,7 @@ contract BeethovenxMasterChef is Ownable {
     {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][_user];
-        // how many beethovenxs per lp token
+        // how many BEETXs per lp token
         uint256 accBeetxPerShare = pool.accBeetxPerShare;
         // total staked lp tokens in this pool
         uint256 lpSupply = lpTokens[_pid].balanceOf(address(this));
@@ -249,8 +248,8 @@ contract BeethovenxMasterChef is Ownable {
         }
     }
 
-    // Deposit LP tokens to MasterChef for BEETHOVEN allocation.
-    function deposit(uint256 _pid, uint256 _amount, address payable _to) public {
+    // Deposit LP tokens to MasterChef for BEETX allocation.
+    function deposit(uint256 _pid, uint256 _amount, address _to) public {
 
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][_to];
@@ -272,9 +271,9 @@ contract BeethovenxMasterChef is Ownable {
         emit Deposit(msg.sender, _pid, _amount, _to);
     }
 
-    /// @notice Harvest proceeds for transaction sender to `to`.
+    /// @notice Harvest proceeds for transaction sender to `_to`.
     /// @param _pid The index of the pool. See `poolInfo`.
-    /// @param _to Receiver of BEETHOVENX rewards.
+    /// @param _to Receiver of BEETX rewards.
     function harvest(uint256 _pid, address _to) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
@@ -300,10 +299,10 @@ contract BeethovenxMasterChef is Ownable {
     }
 
 
-    /// @notice Withdraw LP tokens from MCV2 and harvest proceeds for transaction sender to `to`.
+    /// @notice Withdraw LP tokens from MCV and harvest proceeds for transaction sender to `_to`.
     /// @param _pid The index of the pool. See `poolInfo`.
     /// @param _amount LP token amount to withdraw.
-    /// @param _to Receiver of the LP tokens and BEETHOVENX rewards.
+    /// @param _to Receiver of the LP tokens and BEETX rewards.
     function withdrawAndHarvest(uint256 _pid, uint256 _amount, address _to) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
@@ -346,7 +345,7 @@ contract BeethovenxMasterChef is Ownable {
         emit EmergencyWithdraw(msg.sender, _pid, amount, _to);
     }
 
-    // Safe beethovenx transfer function, just in case if rounding error causes pool to not have enough BEETHOVENs.
+    // Safe BEETX transfer function, just in case if rounding error causes pool to not have enough BEETHOVENs.
     function safeBeetxTransfer(address _to, uint256 _amount) internal {
         uint256 beetxBal = beetx.balanceOf(address(this));
         if (_amount > beetxBal) {
