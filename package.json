@@ -1,6 +1,6 @@
 {
-  "name": "@sushiswap/core",
-  "version": "1.4.2",
+  "name": "beethovenx-token",
+  "version": "1.0.0",
   "license": "MIT",
   "types": "./types/index.ts",
   "description": "Core contracts for the SushiSwap protocol",
@@ -15,14 +15,14 @@
   "author": "",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sushiswap/sushiswap.git"
+    "url": "git+https://github.com/beethovenxfi/beethovenx-token"
   },
   "bugs": {
-    "url": "https://github.com/sushiswap/sushiswap/issues"
+    "url": "https://github.com/beethovenxfi/beethovenx-token/issues"
   },
-  "homepage": "https://github.com/sushiswap/sushiswap#readme",
+  "homepage": "https://github.com/beethovenxfi/beethovenx-token#readme",
   "keywords": [
-    "sushiswap",
+    "beethovenx",
     "ethereum"
   ],
   "scripts": {
