@@ -64,7 +64,6 @@ contract StakedTokenTimelock {
      * @notice Transfers tokens held by timelock to beneficiary.
      */
     function release() public virtual {
-        _masterChef.deposit();
         require(block.timestamp >= releaseTime(), "TokenTimelock: current time is before release time");
 
         uint256 amount = token().balanceOf(address(this));
@@ -73,7 +72,7 @@ contract StakedTokenTimelock {
         token().safeTransfer(beneficiary(), amount);
     }
 
-    function deposit(uint256 _pid) external {
-       _masterChef.deposit(pid, _token.balanceOf(address(this)), address(this))); 
-    }
+//    function deposit(uint256 _pid) external {
+//       _masterChef.deposit(pid, _token.balanceOf(address(this)), address(this)));
+//    }
 }
