@@ -40,8 +40,6 @@ contract BeethovenxMasterChef is Ownable {
     }
     // The BEETS TOKEN!
     BeethovenxToken public beets;
-    // Dev address.
-    address public devAddress;
 
     // Treasury address.
     address public treasuryAddress;
@@ -55,10 +53,11 @@ contract BeethovenxMasterChef is Ownable {
     uint256 private constant ACC_BEETS_PRECISION = 1e12;
 
     // distribution percentages: a value of 1000 = 100%
-    // Percentage of pool rewards that goes to the treasury.
-    uint256 public treasuryPercent;
-    // Percentage of pool rewards that goes to the marketing fund.
-    uint256 public marketingPercent;
+    // 12.8% percentage of pool rewards that goes to the treasury.
+    uint256 public constant TREASURY_PERCENTAGE = 128;
+
+    // 87.2% percentage of pool rewards that goes to LP holders.
+    uint256 public constant POOL_PERCENTAGE = 872;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -85,29 +84,21 @@ contract BeethovenxMasterChef is Ownable {
     event LogPoolAddition(uint256 indexed pid, uint256 allocPoint, IERC20 indexed lpToken, IRewarder indexed rewarder);
     event LogSetPool(uint256 indexed pid, uint256 allocPoint, IRewarder indexed rewarder, bool overwrite);
     event LogUpdatePool(uint256 indexed pid, uint256 lastRewardBlock, uint256 lpSupply, uint256 accBeetsPerShare);
-    event SetDevAddress(address indexed oldAddress, address indexed newAddress);
     event SetTreasuryAddress(address indexed oldAddress, address indexed newAddress);
-    event SetMarketingAddress(address indexed oldAddress, address indexed newAddress);
     event UpdateEmissionRate(address indexed user, uint256 _beetsPerSec);
 
     constructor(
         BeethovenxToken _beets,
-        address _devAddress,
         address _treasuryAddress,
-        address _marketingAddress,
         uint256 _beetsPerBlock,
-        uint256 _startBlock,
-        uint256 _treasuryPercent,
-        uint256 _marketingPercent
+        uint256 _startBlock
 ) {
+        require(_beetsPerBlock <= 8e18, "maximum emission rate of 8 beets per block exceeded");
         beets = _beets;
-        devAddress = _devAddress;
         treasuryAddress = _treasuryAddress;
-        marketingAddress = _marketingAddress;
         beetsPerBlock = _beetsPerBlock;
         startBlock = _startBlock;
-        treasuryPercent = _treasuryPercent;
-        marketingPercent = _marketingPercent;
+
     }
 
     function poolLength() external view returns (uint256) {
@@ -197,10 +188,9 @@ contract BeethovenxMasterChef is Ownable {
             // based on the pool weight (allocation points) we calculate the beets rewarded for this specific pool
             uint256 beetsRewards = blocksSinceLastReward * beetsPerBlock * pool.allocPoint / totalAllocPoint;
 
-            // we take parts of the rewards for dev, marketing & treasury, these can be subject to change, so we recalculate it
+            // we take parts of the rewards for treasury, these can be subject to change, so we recalculate it
             // a value of 1000 = 100%
-            uint256 poolPercent = 1000 - treasuryPercent - marketingPercent;
-            uint256 beetsRewardsForPool = beetsRewards * poolPercent / 1000;
+            uint256 beetsRewardsForPool = beetsRewards * POOL_PERCENTAGE / 1000;
 
             // we calculate the new amount of accumulated beets per LP token
             accBeetsPerShare = accBeetsPerShare + (beetsRewardsForPool * ACC_BEETS_PRECISION / lpSupply);
@@ -232,14 +222,9 @@ contract BeethovenxMasterChef is Ownable {
 
                 uint256 beetsRewards = blocksSinceLastReward * beetsPerBlock * pool.allocPoint / totalAllocPoint;
 
-                // we take parts of the rewards for dev & treasury, these can be subject to change, so we recalculate it
-                // a value of 1000 = 100%
-                uint256 poolPercent = 1000 - treasuryPercent - marketingPercent;
+                uint256 beetsRewardsForPool = beetsRewards * POOL_PERCENTAGE / 1000;
 
-                uint256 beetsRewardsForPool = beetsRewards * poolPercent / 1000;
-
-                beets.mint(treasuryAddress, beetsRewards * treasuryPercent / 1000);
-                beets.mint(marketingAddress, beetsRewards * marketingPercent / 1000);
+                beets.mint(treasuryAddress, beetsRewards * TREASURY_PERCENTAGE / 1000);
                 beets.mint(address(this), beetsRewardsForPool);
                 pool.accBeetsPerShare = pool.accBeetsPerShare + (beetsRewardsForPool * ACC_BEETS_PRECISION / lpSupply);
             }
@@ -355,14 +340,6 @@ contract BeethovenxMasterChef is Ownable {
             beets.transfer(_to, _amount);
         }
     }
-
-    // Update dev address by the previous dev.
-    function dev(address _devaddr) public {
-        require(msg.sender == devAddress, "access denied: setting dev address");
-        devAddress = _devaddr;
-        emit SetDevAddress(devAddress, _devaddr);
-    }
-
     // Update treasury address by the previous treasury.
     function treasury(address _treasuryAddress) public {
         require(msg.sender == treasuryAddress, "access denied: setting treasury address");
@@ -370,15 +347,8 @@ contract BeethovenxMasterChef is Ownable {
         emit SetTreasuryAddress(treasuryAddress, _treasuryAddress);
     }
 
-    function marketing(address _marketingAddress) public {
-        require(msg.sender == marketingAddress, "access denied: setting marketing address");
-        marketingAddress = _marketingAddress;
-        emit SetMarketingAddress(marketingAddress, _marketingAddress);
-    }
-
-    // Pancake has to add hidden dummy pools inorder to alter the emission,
-    // here we make it simple and transparent to all.
     function updateEmissionRate(uint256 _beetsPerBlock) public onlyOwner {
+        require(_beetsPerBlock <= 8e18, "maximum emission rate of 8 beets per block exceeded");
         massUpdatePools();
         beetsPerBlock = _beetsPerBlock;
         emit UpdateEmissionRate(msg.sender, _beetsPerBlock);
