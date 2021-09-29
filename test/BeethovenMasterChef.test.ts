@@ -102,7 +102,7 @@ describe("BeethovenxMasterChef", function () {
     expect(await chef.treasuryAddress()).to.equal(bob.address)
   })
 
-  it("allows only the dev address to change the dev address", async function () {
+  it("allows only the current address to change its address", async function () {
     const chef = await deployChef(
       beets.address,
       dev.address,
@@ -313,8 +313,6 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("starts giving out rewards only after the start block has been reached", async function () {
-    // 100 per block farming rate starting at block 100
-    // we give 20% to devs & 20% to treasury, so 60% are distributed to lp holders
     const beetsPerBlock = bn(1000)
     const chef = await deployChef(
       beets.address,
