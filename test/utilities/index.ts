@@ -66,9 +66,20 @@ export async function deployChef(
   treasuryAddress: string,
   marketingAddress: string,
   beetsPerBlock: number = bn(100),
-  startBlock: number = 0
+  startBlock: number = 0,
+  treasuryPercentage: number,
+  marketingPercentage: number
 ): Promise<BeethovenxMasterChef> {
-  return deployContract("BeethovenxMasterChef", [beetsAddress, devAddress, treasuryAddress, marketingAddress, beetsPerBlock, startBlock])
+  return deployContract("BeethovenxMasterChef", [
+    beetsAddress,
+    devAddress,
+    treasuryAddress,
+    marketingAddress,
+    beetsPerBlock,
+    startBlock,
+    treasuryPercentage,
+    marketingPercentage,
+  ])
 }
 
 export async function deployERC20Mock(name: string, symbol: string, supply: number): Promise<ERC20Mock> {

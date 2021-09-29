@@ -55,12 +55,10 @@ contract BeethovenxMasterChef is Ownable {
     uint256 private constant ACC_BEETS_PRECISION = 1e12;
 
     // distribution percentages: a value of 1000 = 100%
-    // Percentage of pool rewards that goto the devs.
-    uint256 public constant DEV_PERCENT = 71;
     // Percentage of pool rewards that goes to the treasury.
-    uint256 public constant TREASURY_PERCENT = 142;
+    uint256 public treasuryPercent;
     // Percentage of pool rewards that goes to the marketing fund.
-    uint256 public constant MARKETING_PERCENT = 21;
+    uint256 public marketingPercent;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -98,7 +96,9 @@ contract BeethovenxMasterChef is Ownable {
         address _treasuryAddress,
         address _marketingAddress,
         uint256 _beetsPerBlock,
-        uint256 _startBlock
+        uint256 _startBlock,
+        uint256 _treasuryPercent,
+        uint256 _marketingPercent
 ) {
         beets = _beets;
         devAddress = _devAddress;
@@ -106,6 +106,8 @@ contract BeethovenxMasterChef is Ownable {
         marketingAddress = _marketingAddress;
         beetsPerBlock = _beetsPerBlock;
         startBlock = _startBlock;
+        treasuryPercent = _treasuryPercent;
+        marketingPercent = _marketingPercent;
     }
 
     function poolLength() external view returns (uint256) {
@@ -197,7 +199,7 @@ contract BeethovenxMasterChef is Ownable {
 
             // we take parts of the rewards for dev, marketing & treasury, these can be subject to change, so we recalculate it
             // a value of 1000 = 100%
-            uint256 poolPercent = 1000 - DEV_PERCENT - TREASURY_PERCENT - MARKETING_PERCENT;
+            uint256 poolPercent = 1000 - treasuryPercent - marketingPercent;
             uint256 beetsRewardsForPool = beetsRewards * poolPercent / 1000;
 
             // we calculate the new amount of accumulated beets per LP token
@@ -232,13 +234,12 @@ contract BeethovenxMasterChef is Ownable {
 
                 // we take parts of the rewards for dev & treasury, these can be subject to change, so we recalculate it
                 // a value of 1000 = 100%
-                uint256 poolPercent = 1000 - DEV_PERCENT - TREASURY_PERCENT - MARKETING_PERCENT;
+                uint256 poolPercent = 1000 - treasuryPercent - marketingPercent;
 
                 uint256 beetsRewardsForPool = beetsRewards * poolPercent / 1000;
 
-                beets.mint(devAddress, beetsRewards * DEV_PERCENT / 1000);
-                beets.mint(treasuryAddress, beetsRewards * TREASURY_PERCENT / 1000);
-                beets.mint(marketingAddress, beetsRewards * MARKETING_PERCENT / 1000);
+                beets.mint(treasuryAddress, beetsRewards * treasuryPercent / 1000);
+                beets.mint(marketingAddress, beetsRewards * marketingPercent / 1000);
                 beets.mint(address(this), beetsRewardsForPool);
                 pool.accBeetsPerShare = pool.accBeetsPerShare + (beetsRewardsForPool * ACC_BEETS_PRECISION / lpSupply);
             }
