@@ -47,7 +47,7 @@ export function encodeParameters(types: any, values: any) {
 //   await thisObject[name].mint(thisObject.alice.address)
 // }
 // Defaults to e18 using amount * 10^18
-export function getBigNumber(amount: number, decimals: number = 18) {
+export function bn(amount: number, decimals: number = 18) {
   return BigNumber.from(amount).mul(BigNumber.from(BASE_TEN).pow(decimals))
 }
 
@@ -61,25 +61,14 @@ export async function deployContract<T>(contractName: string, constructorArgs: a
 }
 
 export async function deployChef(
-  beetxAddress: string,
-  devAddress: string,
+  beetsAddress: string,
   treasuryAddress: string,
-  beetxPerBlock: number = getBigNumber(100),
-  startBlock: number = 0,
-  devPercentage: number = 20,
-  treasuryPercentage: number = 20
+  beetsPerBlock: number = bn(100),
+  startBlock: number = 0
 ): Promise<BeethovenxMasterChef> {
-  return deployContract("BeethovenxMasterChef", [
-    beetxAddress,
-    devAddress,
-    treasuryAddress,
-    beetxPerBlock,
-    startBlock,
-    devPercentage,
-    treasuryPercentage,
-  ])
+  return deployContract("BeethovenxMasterChef", [beetsAddress, treasuryAddress, beetsPerBlock, startBlock])
 }
 
 export async function deployERC20Mock(name: string, symbol: string, supply: number): Promise<ERC20Mock> {
-  return deployContract("ERC20Mock", ["LP Token 2", "LPT2", getBigNumber(supply)])
+  return deployContract("ERC20Mock", ["LP Token 2", "LPT2", bn(supply)])
 }

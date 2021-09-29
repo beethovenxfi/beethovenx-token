@@ -9,11 +9,11 @@ import "../interfaces/IRewarder.sol";
 
 contract RewarderBrokenMock is IRewarder {
 
-    function onBeetxReward (uint256, address, address, uint256, uint256) override external {
+    function onBeetsReward (uint256, address, address, uint256, uint256) override external {
         revert();
     }
 
-    function pendingTokens(uint256 pid, address user, uint256 beetxAmount) override external view returns (IERC20[] memory rewardTokens, uint256[] memory rewardAmounts){
+    function pendingTokens(uint256 pid, address user, uint256 beetsAmount) override external view returns (IERC20[] memory rewardTokens, uint256[] memory rewardAmounts){
         revert();
     }
 
