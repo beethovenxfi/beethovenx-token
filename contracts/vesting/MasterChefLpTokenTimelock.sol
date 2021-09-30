@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.0;
+pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../token/BeethovenxMasterChef.sol";
-import "hardhat/console.sol";
 
 // based on https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.3.0/contracts/token/ERC20/utils/TokenTimelock.sol
 
@@ -114,7 +113,9 @@ contract MasterChefLpTokenTimelock {
     /**
      * @notice Transfers tokens held by timelock to master chef pool.
      */
-    function depositAllToMasterChef() external {
+    function depositAllToMasterChef(uint256 amount) external {
+        _token.safeTransferFrom(msg.sender, address(this), amount);
+
         _token.approve(address(_masterChef), _token.balanceOf(address(this)));
         _masterChef.deposit(
             _masterChefPoolId,
@@ -124,6 +125,10 @@ contract MasterChefLpTokenTimelock {
     }
 
     function harvest() external {
+        require(
+            msg.sender == beneficiary(),
+            "only beneficiary can call harvest"
+        );
         _masterChef.harvest(masterChefPoolId(), beneficiary());
     }
 }
