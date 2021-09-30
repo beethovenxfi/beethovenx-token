@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "license": "MIT",
   "types": "./types/index.ts",
-  "description": "Core contracts for the SushiSwap protocol",
+  "description": "Core contracts for the BeethovenX token protocol",
   "files": [
     "abi",
     "artifacts",
