@@ -6,18 +6,12 @@ analyze:
     mode: quick
     async: true
     create-group: true
-    solc: 0.6.12
+    solc: 0.8.7
     remappings:
         - "@openzeppelin=node_modules/@openzeppelin"
     targets:
-        - contracts/SushiMaker.sol:SushiMaker
-        - contracts/uniswapv2/UniswapV2Pair.sol:UniswapV2Pair
-        - contracts/uniswapv2/UniswapV2Factory.sol:UniswapV2Factory
-        - contracts/uniswapv2/UniswapV2ERC20.sol:UniswapV2ERC20
-        - contracts/uniswapv2/UniswapV2Router02.sol:UniswapV2Router02
-        - contracts/SushiRoll.sol:SushiRoll
-        - contracts/BeethovenxToken.sol:SushiToken
-        - contracts/BeethovenxBar.sol:SushiBar
-        - contracts/BeethovenxMasterChef.sol:MasterChef
+        - contracts/token/BeethovenxToken.sol:BeethovenxToken
+        - contracts/token/BeethovenxBar.sol:BeethovenxBar
+        - contracts/token/BeethovenxMasterChef.sol:BeethovenxMasterChef
         - contracts/governance/Timelock.sol:Timelock
-        - contracts/Migrator.sol:Migrator
+        - contracts/vesting/MasterChefLpTokenTimelock.sol:MasterChefLpTokenTimelock
