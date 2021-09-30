@@ -1,4 +1,5 @@
 import { network } from "hardhat"
+import { ContractTransaction } from "@ethersproject/contracts"
 
 const { ethers } = require("hardhat")
 
@@ -9,6 +10,13 @@ export async function advanceBlock() {
 }
 
 export async function advanceBlockTo(blockNumber: string) {
+  for (let i = await ethers.provider.getBlockNumber(); i < blockNumber; i++) {
+    await advanceBlock()
+  }
+}
+
+export async function advanceBlockRelativeTo(tx: ContractTransaction, amountOfBlocks: number) {
+  const blockNumber = tx.blockNumber! + amountOfBlocks
   for (let i = await ethers.provider.getBlockNumber(); i < blockNumber; i++) {
     await advanceBlock()
   }

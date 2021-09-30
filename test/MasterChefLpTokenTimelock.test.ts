@@ -2,7 +2,16 @@ import moment from "moment"
 import { BeethovenxMasterChef, BeethovenxToken, MasterChefLpTokenTimelock } from "../types"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 import { ethers } from "hardhat"
-import { advanceBlockTo, bn, deployChef, deployContract, deployERC20Mock } from "./utilities"
+import {
+  advanceBlockRelativeTo,
+  advanceBlockTo,
+  advanceTime,
+  advanceTimeAndBlock,
+  bn,
+  deployChef,
+  deployContract,
+  deployERC20Mock,
+} from "./utilities"
 import { expect } from "chai"
 import { BigNumber } from "ethers"
 
@@ -85,7 +94,49 @@ describe("BeethovenxMasterChef", function () {
       0,
     ])
 
-    // lets give bob some tokens and transfer them to the timelock
+    // lets give bob some tokens and transfer them to the vesting contract
+    const lpAmount = 1000
+    await lp.transfer(bob.address, lpAmount)
+    await lp.connect(bob).approve(tokenTimelock.address, lpAmount)
+    await lp.connect(bob).transfer(tokenTimelock.address, lpAmount)
+
+    // the vesting contract should now have the tokens
+    expect(await lp.balanceOf(tokenTimelock.address)).to.equal(lpAmount)
+    // bob should have none left
+    expect(await lp.balanceOf(bob.address)).to.equal(0)
+
+    // now deposit them to the master chef
+    const tx = await tokenTimelock.depositAllToMasterChef()
+    expect(await lp.balanceOf(chef.address)).to.equal(lpAmount)
+
+    await advanceBlockRelativeTo(tx, 10)
+    const expectedRewards = lpRewards(10)
+    expect(await chef.pendingBeets(0, tokenTimelock.address)).to.equal(expectedRewards)
+
+    await advanceBlockRelativeTo(tx, 19)
+    await tokenTimelock.harvest()
+
+    expect(await beets.balanceOf(bob.address)).to.equal(lpRewards(20))
+  })
+
+  it("allows releasing of vested tokens after release time has passed", async () => {
+    const lpRewards = rewardsCalculator(beetsPerBlock, lpPercentage)
+
+    const lp = await deployERC20Mock("LP", "LP", 10_000)
+
+    await chef.add(10, lp.address, ethers.constants.AddressZero)
+    const now = moment()
+    const releaseTime = moment().add(1, "year")
+
+    const tokenTimelock = await deployContract<MasterChefLpTokenTimelock>("MasterChefLpTokenTimelock", [
+      lp.address,
+      bob.address,
+      releaseTime.unix(),
+      chef.address,
+      0,
+    ])
+
+    // lets give bob again some tokens and transfer them to the token vesting contract
     const lpAmount = 1000
     await lp.transfer(bob.address, lpAmount)
     await lp.connect(bob).approve(tokenTimelock.address, lpAmount)
@@ -95,16 +146,18 @@ describe("BeethovenxMasterChef", function () {
     const tx = await tokenTimelock.depositAllToMasterChef()
     expect(await lp.balanceOf(chef.address)).to.equal(lpAmount)
 
-    await advanceBlockTo((tx.blockNumber! + 10).toString())
-    const expectedRewards = lpRewards(10)
-    expect(await chef.pendingBeets(0, tokenTimelock.address)).to.equal(expectedRewards)
+    // lets advance a few blocks to generate some rewards
+    await advanceBlockRelativeTo(tx, 9)
 
-    await advanceBlockTo((tx.blockNumber! + 19).toString())
-    await tokenTimelock.harvest()
-
-    expect(await beets.balanceOf(bob.address)).to.equal(lpRewards(20))
+    // the vesting duration is set to 1 year, so lets advance to this time
+    await advanceTime(releaseTime.diff(now, "seconds"))
+    await tokenTimelock.release() // we should get rewards for 10 blocks
+    expect(await beets.balanceOf(bob.address)).to.equal(lpRewards(10))
+    // bob should also have his LP tokens back
+    expect(await lp.balanceOf(bob.address)).to.equal(lpAmount)
   })
 })
+
 function rewardsCalculator(beetsPerBlock: BigNumber, percentage: number) {
   return (blocks: number) => {
     return percentageOf(beetsPerBlock.mul(blocks), percentage)

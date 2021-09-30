@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract BeethovenxToken is ERC20("BeethovenxToken", "BEETS"), Ownable {
     uint256 public maxSupply = 250_000_000e18; // 250 million beets
+
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
     function mint(address _to, uint256 _amount) public onlyOwner {
         require(
