@@ -3,15 +3,17 @@
 //
 pragma solidity ^0.8.0;
 //pragma experimental ABIEncoderV2;
-//import "../interfaces/IRewarder.sol";
+import "../interfaces/IRewarder.sol";
+
 //import "@boringcrypto/boring-solidity/contracts/libraries/BoringERC20.sol";
-import "@boringcrypto/boring-solidity/contracts/libraries/BoringMath.sol";
-import "@boringcrypto/boring-solidity/contracts/BoringOwnable.sol";
+//import "@boringcrypto/boring-solidity/contracts/libraries/BoringMath.sol";
+//import "@boringcrypto/boring-solidity/contracts/BoringOwnable.sol";
 
 //import "../MasterChefV2.sol.ref";
 //
 ///// @author @0xKeno
-contract ComplexRewarderTime is IRewarder, BoringOwnable {
+//contract ComplexRewarderTime is IRewarder, BoringOwnable {
+contract ComplexRewarderTime {
     //    using BoringMath for uint256;
     //    using BoringMath128 for uint128;
     //    using BoringERC20 for IERC20;

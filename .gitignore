@@ -10,4 +10,4 @@ coverage.json
 .env
 .DS_Store
 .vscode
-.idea/
+.idea

@@ -4,9 +4,8 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "hardhat/console.sol";
 import "./BeethovenxToken.sol";
-import "./interfaces/IRewarder.sol";
+import "../interfaces/IRewarder.sol";
 
 // Have fun reading it. Hopefully it's still bug-free
 contract BeethovenxMasterChef is Ownable {
@@ -385,6 +384,13 @@ contract BeethovenxMasterChef is Ownable {
             (user.amount * pool.accBeetsPerShare) / ACC_BEETS_PRECISION;
         // subtracting the rewards the user is not eligible for
         uint256 eligibleBeets = accumulatedBeets - user.rewardDebt;
+
+        /*
+            after harvest & withdraw, he should be eligible for exactly 0 tokens
+            => userInfo.amount * pool.accBeetsPerShare / ACC_BEETS_PRECISION == userInfo.rewardDebt
+            since we are removing some LP's from userInfo.amount, we also have to remove
+            the equivalent amount of reward debt
+        */
 
         user.rewardDebt =
             accumulatedBeets -

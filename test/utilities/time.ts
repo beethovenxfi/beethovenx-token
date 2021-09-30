@@ -45,6 +45,10 @@ export async function advanceTime(time: number) {
   await ethers.provider.send("evm_increaseTime", [time])
 }
 
+export async function advanceToTime(unixTimestamp: number) {
+  await ethers.provider.send("evm_setNextBlockTimestamp", [unixTimestamp])
+}
+
 export const duration = {
   seconds: function (val: string) {
     return BigNumber.from(val)
