@@ -33,16 +33,13 @@ contract BeethovenxMasterChef is Ownable {
         // we have a fixed number of BEETS tokens released per block, each pool gets his fraction based on the allocPoint
         uint256 allocPoint; // How many allocation points assigned to this pool. the fraction BEETS to distribute per block.
         uint256 lastRewardBlock; // Last block number that BEETS distribution occurs.
-        uint256 accBeetsPerShare; // Accumulated BEETS per share, times 1e12. See below.
+        uint256 accBeetsPerShare; // Accumulated BEETS per LP share. this is multiplied by ACC_BEETS_PRECISION for more exact results (rounding errors)
     }
     // The BEETS TOKEN!
     BeethovenxToken public beets;
 
     // Treasury address.
     address public treasuryAddress;
-
-    // Marketing fund address.
-    address public marketingAddress;
 
     // BEETS tokens created per block.
     uint256 public beetsPerBlock;
@@ -67,7 +64,7 @@ contract BeethovenxMasterChef is Ownable {
     /// @notice Address of each `IRewarder` contract in MCV.
     IRewarder[] public rewarder;
 
-    mapping(uint256 => mapping(address => UserInfo)) public userInfo;
+    mapping(uint256 => mapping(address => UserInfo)) public userInfo; // mapping form poolId => user Address => User Info
     // Total allocation points. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
     // The block number when BEETS mining starts.
@@ -123,8 +120,8 @@ contract BeethovenxMasterChef is Ownable {
         uint256 _startBlock
     ) {
         require(
-            _beetsPerBlock <= 8e18,
-            "maximum emission rate of 8 beets per block exceeded"
+            _beetsPerBlock <= 6e18,
+            "maximum emission rate of 6 beets per block exceeded"
         );
         beets = _beets;
         treasuryAddress = _treasuryAddress;
@@ -207,7 +204,9 @@ contract BeethovenxMasterChef is Ownable {
             totalAllocPoint -
             poolInfo[_pid].allocPoint +
             _allocPoint;
+
         poolInfo[_pid].allocPoint = _allocPoint;
+
         if (overwrite) {
             rewarder[_pid] = _rewarder;
         }
@@ -273,11 +272,10 @@ contract BeethovenxMasterChef is Ownable {
             // total lp tokens staked for this pool
             uint256 lpSupply = lpTokens[_pid].balanceOf(address(this));
             if (lpSupply > 0) {
-                //                uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
                 uint256 blocksSinceLastReward =
                     block.number - pool.lastRewardBlock;
-                // rewards for this pool based on his allocation points
 
+                // rewards for this pool based on his allocation points
                 uint256 beetsRewards =
                     (blocksSinceLastReward * beetsPerBlock * pool.allocPoint) /
                         totalAllocPoint;
@@ -289,13 +287,16 @@ contract BeethovenxMasterChef is Ownable {
                     treasuryAddress,
                     (beetsRewards * TREASURY_PERCENTAGE) / 1000
                 );
+
                 beets.mint(address(this), beetsRewardsForPool);
+
                 pool.accBeetsPerShare =
                     pool.accBeetsPerShare +
                     ((beetsRewardsForPool * ACC_BEETS_PRECISION) / lpSupply);
             }
             pool.lastRewardBlock = block.number;
             poolInfo[_pid] = pool;
+
             emit LogUpdatePool(
                 _pid,
                 pool.lastRewardBlock,
@@ -456,8 +457,8 @@ contract BeethovenxMasterChef is Ownable {
 
     function updateEmissionRate(uint256 _beetsPerBlock) public onlyOwner {
         require(
-            _beetsPerBlock <= 8e18,
-            "maximum emission rate of 8 beets per block exceeded"
+            _beetsPerBlock <= 6e18,
+            "maximum emission rate of 6 beets per block exceeded"
         );
         massUpdatePools();
         beetsPerBlock = _beetsPerBlock;

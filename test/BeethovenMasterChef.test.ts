@@ -38,7 +38,7 @@ describe("BeethovenxMasterChef", function () {
   it("sets initial state correctly", async () => {
     const startBlock = 521
 
-    const beetsPerBlock = bn(8)
+    const beetsPerBlock = bn(6)
 
     const chef = await deployChef(beets.address, treasury.address, beetsPerBlock, startBlock)
     await beets.transferOwnership(chef.address)
@@ -60,13 +60,13 @@ describe("BeethovenxMasterChef", function () {
     expect(actualBeetsPerBlock).to.equal(beetsPerBlock)
   })
 
-  // our max emission rate at the start is 8 beets / blocks
-  it("reverts when initialized with an emission rate bigger than 8e18", async () => {
-    await expect(deployChef(beets.address, treasury.address, bn(9), 0)).to.be.revertedWith("maximum emission rate of 8 beets per block exceeded")
+  // our max emission rate at the start is 6 beets / blocks
+  it("reverts when initialized with an emission rate bigger than 6e18", async () => {
+    await expect(deployChef(beets.address, treasury.address, bn(9), 0)).to.be.revertedWith("maximum emission rate of 6 beets per block exceeded")
   })
 
   it("allows setting of emission rate by the owner", async () => {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     await chef.connect(owner).updateEmissionRate(bn(1))
@@ -74,7 +74,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("denies access if anyone but owner updates emission rate", async () => {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     await expect(chef.connect(bob).updateEmissionRate(bn(1))).to.be.reverted
@@ -82,14 +82,14 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("reverts given an updated token emission of bigger than 8 beets per block", async () => {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
-    await expect(chef.connect(owner).updateEmissionRate(bn(9))).to.be.revertedWith("maximum emission rate of 8 beets per block exceeded")
+    await expect(chef.connect(owner).updateEmissionRate(bn(9))).to.be.revertedWith("maximum emission rate of 6 beets per block exceeded")
   })
 
   it("allows treasury address to update themselves", async function () {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     expect(await chef.treasuryAddress()).to.equal(treasury.address)
@@ -98,14 +98,14 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("allows only the current treasury address to change its address", async function () {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 200)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 200)
     await beets.transferOwnership(chef.address)
 
     await expect(chef.connect(bob).treasury(bob.address)).to.be.revertedWith("access denied: setting treasury address")
   })
 
   it("returns amount of pools", async function () {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
@@ -117,7 +117,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("updates pool with allocation point and rewarder", async function () {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     const rewarderToken = await deployERC20Mock("RewarderToken", "RT1", 10)
@@ -140,7 +140,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("reverts in case of updating a pool with an invalid pid", async function () {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     let err
@@ -153,7 +153,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("reverts when adding an lp token which was already added", async () => {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
@@ -165,14 +165,14 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("reverts when adding a pool with an LP token address which is not a contract", async () => {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     await expect(chef.add(10, carol.address, ethers.constants.AddressZero)).to.be.revertedWith("add: LP token must be a valid contract")
   })
 
   it("reverts when adding a pool with a rewarder address which is not a contract", async () => {
-    const chef = await deployChef(beets.address, treasury.address, bn(8), 0)
+    const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     const lp1Token = await deployERC20Mock("LP Token 1", "LPT1", 10)
@@ -182,7 +182,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("returns pending BEETS", async function () {
-    const beetsPerblock = bn(8)
+    const beetsPerblock = bn(6)
     const chef = await deployChef(beets.address, treasury.address, beetsPerblock, 0)
     await beets.transferOwnership(chef.address)
 
@@ -194,7 +194,6 @@ describe("BeethovenxMasterChef", function () {
     await lp1Token.connect(alice).approve(chef.address, 10)
 
     const depositionPoint = await chef.connect(alice).deposit(0, 1, alice.address)
-    await advanceBlock()
     await advanceBlockTo((depositionPoint.blockNumber! + 9).toString())
     await chef.updatePool(0)
     expect(await chef.pendingBeets(0, alice.address)).to.equal(percentageOf(beetsPerblock.mul(10), lpPercentage))
@@ -225,7 +224,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("starts giving out rewards only after the start block has been reached", async function () {
-    const beetsPerBlock = bn(8)
+    const beetsPerBlock = bn(6)
     const chef = await deployChef(beets.address, treasury.address, beetsPerBlock, 150)
     await beets.transferOwnership(chef.address)
 
@@ -266,8 +265,6 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("does not distribute BEETS's if no one deposits", async function () {
-    // 100 per block farming rate starting at block 100
-    // we give 20% to devs & 20% to treasury, so 60% are distributed to lp holders
     const chef = await deployChef(beets.address, treasury.address, 1000, 100)
     await beets.transferOwnership(chef.address)
 
@@ -284,9 +281,6 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("distributes BEETS properly for each staker", async function () {
-    // 100 per block farming rate starting at block 300
-    // we give 20% to devs & 20% to treasury, so 60% are distributed to lp holders
-
     /*
         formula for rewards: FractionOfTotalLps * NumberOfBlocks * RewardsPerBlock * PercentageOfRewardsForPool
         where RewardsPerBlock = 1000 & FractionOfRewardsForPool = 60%
@@ -300,13 +294,12 @@ describe("BeethovenxMasterChef", function () {
             bob rewards = 2/3 * 4 * 1000 * 0.6
          ....
      */
-    const beetsPerBlock = bn(8)
+    const beetsPerBlock = bn(6)
     const chef = await deployChef(beets.address, treasury.address, beetsPerBlock, 300)
     await beets.transferOwnership(chef.address)
 
     const lpRewards = rewardsCalculator(beetsPerBlock, lpPercentage)
     const treasuryRewards = rewardsCalculator(beetsPerBlock, treasuryPercentage)
-    // const marketingRewards = rewardsCalculator(beetsPerBlock, marketingPercentage)
 
     const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
     await lp.transfer(alice.address, "1000")
@@ -412,14 +405,12 @@ describe("BeethovenxMasterChef", function () {
       .add(lpRewards(3).mul(2).div(6))
       .add(lpRewards(1).mul(2).div(6))
       .add(lpRewards(9).mul(2).div(7))
-      //we gotta add 2 more cause of lesser exact rounding precision (ACC_BEETS_PRECISION)
-      .add(2)
+
     expect(await beets.balanceOf(bob.address)).to.equal(bobBalance330)
     expect(await beets.balanceOf(carol.address)).to.equal(0)
 
-    const carolPending330 = carolPending320.add(lpRewards(1).div(2)).add(lpRewards(9).mul(3).div(7)).add(1)
+    const carolPending330 = carolPending320.add(lpRewards(1).div(2)).add(lpRewards(9).mul(3).div(7))
     expect(await chef.pendingBeets(0, carol.address)).to.equal(carolPending330)
-    // expect(await chef.pendingBeets(0, carol.address)).to.equal(lpRewards())
 
     const treasuryBalance330 = percentageOf(beetsPerBlock.mul(20), treasuryPercentage)
     expect(await beets.balanceOf(chef.address)).to.equal(beetsPerBlock.mul(20).sub(aliceBalance320).sub(bobBalance330).sub(treasuryBalance330))
@@ -433,8 +424,7 @@ describe("BeethovenxMasterChef", function () {
       alice (all harvested):
         preVal + 10 blocks 4/13 of the rewards
     */
-    // we have another 3 tokens cause of rounding errors
-    const aliceBalance340 = aliceBalance320.add(lpRewards(1).div(6)).add(lpRewards(9).mul(2).div(7)).add(lpRewards(10).mul(4).div(13)).add(3)
+    const aliceBalance340 = aliceBalance320.add(lpRewards(1).div(6)).add(lpRewards(9).mul(2).div(7)).add(lpRewards(10).mul(4).div(13))
     expect(await beets.balanceOf(alice.address)).to.equal(aliceBalance340)
 
     await advanceBlockTo("349")
@@ -445,7 +435,8 @@ describe("BeethovenxMasterChef", function () {
         bal330 + 10 blocks 3/13 of the rewards + 10 blocks 1/3 of rewards
     */
 
-    expect(await beets.balanceOf(bob.address)).to.equal(bobBalance330.add(lpRewards(10).mul(3).div(13)).add(lpRewards(10).div(3)))
+    // we have to subtract 1 cause of rounding errors
+    expect(await beets.balanceOf(bob.address)).to.equal(bobBalance330.add(lpRewards(10).mul(3).div(13)).add(lpRewards(10).div(3)).sub(1))
 
     await advanceBlockTo("359")
 
@@ -454,9 +445,8 @@ describe("BeethovenxMasterChef", function () {
       carol (all harvested):
         preVal + 10 blocks 6/13 of the rewards + 10 blocks 7/10 of rewards + 10 blocks 10/10 of rewards
     */
-    // we get some rounding on the 6/13 distribution, so have to add 1 additional
     expect(await beets.balanceOf(carol.address)).to.equal(
-      carolPending330.add(lpRewards(10).mul(6).div(13)).add(lpRewards(10).mul(2).div(3)).add(lpRewards(10)).add(1)
+      carolPending330.add(lpRewards(10).mul(6).div(13)).add(lpRewards(10).mul(2).div(3)).add(lpRewards(10))
     )
 
     expect(await beets.totalSupply()).to.equal(beetsPerBlock.mul(50))
@@ -468,7 +458,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   it("gives correct BEETS allocation to each pool", async function () {
-    const beetsPerBlock = bn(8)
+    const beetsPerBlock = bn(6)
     const chef = await deployChef(beets.address, treasury.address, beetsPerBlock, 100)
     await beets.transferOwnership(chef.address)
 
@@ -487,22 +477,21 @@ describe("BeethovenxMasterChef", function () {
     // Alice deposits 10 LPs at block 410
     await advanceBlockTo("409")
     await chef.connect(alice).deposit(0, "10", alice.address)
-    // Add LP2 to the pool with allocation 2 at block 420
     await advanceBlockTo("419")
 
+    // Add LP2 to the pool with allocation 2 at block 420
     await chef.add("30", lp2.address, ethers.constants.AddressZero) // 420
     const alicePending420 = lpRewards(10)
     expect(await chef.pendingBeets(0, alice.address)).to.equal(alicePending420)
 
     // Bob deposits 10 LP2s at block 425
     await advanceBlockTo("424")
-    await chef.connect(bob).deposit(1, "5", bob.address)
+    await chef.connect(bob).deposit(1, "10", bob.address)
     // Alice should have alicePending420 + 5 blocks 1/4 of rewards
     const alicePendingBeets425 = alicePending420.add(lpRewards(5).div(4))
     expect(await chef.pendingBeets(0, alice.address)).to.equal(alicePendingBeets425)
     await advanceBlockTo("430")
     // At block 430. Bob should get 5*3/4 of rewards
-    // Alice 6750 + 5 * 1/4 * 1000 * 0.6 = 8000
     expect(await chef.pendingBeets(0, alice.address)).to.equal(alicePendingBeets425.add(lpRewards(5).div(4)))
     expect(await chef.pendingBeets(1, bob.address)).to.equal(lpRewards(5).mul(3).div(4))
   })
