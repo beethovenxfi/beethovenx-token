@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 //
 // This contract handles swapping to and from nBEETX, BEETX's staking token.
-contract BeethovenxBar is ERC20("BeethovenxBar", "nBEETX"){
+contract BeethovenxBar is ERC20("BeethovenxBar", "nBEETX") {
     IERC20 public beetx;
 
     // Define the Beetx token contract
@@ -24,15 +24,14 @@ contract BeethovenxBar is ERC20("BeethovenxBar", "nBEETX"){
         // If no xBeethovenx exists, mint it 1:1 to the amount put in
         if (totalShares == 0 || totalBeetx == 0) {
             _mint(msg.sender, _amount);
-        } 
+        }
         // Calculate and mint the amount of nBEETX the BBEETX is worth. The ratio will change overtime, as nBEETX is burned/minted and BEETX deposited + gained from fees / withdrawn.
         else {
-            uint256 what = _amount * totalShares / totalBeetx;
+            uint256 what = (_amount * totalShares) / totalBeetx;
             _mint(msg.sender, what);
         }
         // Lock the BEETX in the contract
         beetx.transferFrom(msg.sender, address(this), _amount);
-
     }
 
     // Leave the bar. Claim back your BEETX's.
@@ -41,7 +40,7 @@ contract BeethovenxBar is ERC20("BeethovenxBar", "nBEETX"){
         // Gets the amount of nBEETX in existence
         uint256 totalShares = totalSupply();
         // Calculates the amount of BEETX the nBEETX is worth
-        uint256 what = _share * beetx.balanceOf(address(this)) / totalShares;
+        uint256 what = (_share * beetx.balanceOf(address(this))) / totalShares;
         _burn(msg.sender, _share);
         beetx.transfer(msg.sender, what);
     }

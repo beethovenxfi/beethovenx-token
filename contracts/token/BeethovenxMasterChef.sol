@@ -2,17 +2,14 @@
 
 pragma solidity ^0.8.0;
 
-
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "hardhat/console.sol";
 import "./BeethovenxToken.sol";
-import "./interfaces/IRewarder.sol";
-
+import "../interfaces/IRewarder.sol";
 
 // Have fun reading it. Hopefully it's still bug-free
 contract BeethovenxMasterChef is Ownable {
-    using  SafeERC20 for IERC20;
+    using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
 
     // Info of each user.
@@ -67,7 +64,6 @@ contract BeethovenxMasterChef is Ownable {
 
     EnumerableSet.AddressSet private lpTokenAddresses;
 
-
     /// @notice Address of each `IRewarder` contract in MCV.
     IRewarder[] public rewarder;
 
@@ -77,14 +73,47 @@ contract BeethovenxMasterChef is Ownable {
     // The block number when BEETS mining starts.
     uint256 public startBlock;
 
-    event Deposit(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
-    event Withdraw(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
-    event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
+    event Deposit(
+        address indexed user,
+        uint256 indexed pid,
+        uint256 amount,
+        address indexed to
+    );
+    event Withdraw(
+        address indexed user,
+        uint256 indexed pid,
+        uint256 amount,
+        address indexed to
+    );
+    event EmergencyWithdraw(
+        address indexed user,
+        uint256 indexed pid,
+        uint256 amount,
+        address indexed to
+    );
     event Harvest(address indexed user, uint256 indexed pid, uint256 amount);
-    event LogPoolAddition(uint256 indexed pid, uint256 allocPoint, IERC20 indexed lpToken, IRewarder indexed rewarder);
-    event LogSetPool(uint256 indexed pid, uint256 allocPoint, IRewarder indexed rewarder, bool overwrite);
-    event LogUpdatePool(uint256 indexed pid, uint256 lastRewardBlock, uint256 lpSupply, uint256 accBeetsPerShare);
-    event SetTreasuryAddress(address indexed oldAddress, address indexed newAddress);
+    event LogPoolAddition(
+        uint256 indexed pid,
+        uint256 allocPoint,
+        IERC20 indexed lpToken,
+        IRewarder indexed rewarder
+    );
+    event LogSetPool(
+        uint256 indexed pid,
+        uint256 allocPoint,
+        IRewarder indexed rewarder,
+        bool overwrite
+    );
+    event LogUpdatePool(
+        uint256 indexed pid,
+        uint256 lastRewardBlock,
+        uint256 lpSupply,
+        uint256 accBeetsPerShare
+    );
+    event SetTreasuryAddress(
+        address indexed oldAddress,
+        address indexed newAddress
+    );
     event UpdateEmissionRate(address indexed user, uint256 _beetsPerSec);
 
     constructor(
@@ -92,13 +121,15 @@ contract BeethovenxMasterChef is Ownable {
         address _treasuryAddress,
         uint256 _beetsPerBlock,
         uint256 _startBlock
-) {
-        require(_beetsPerBlock <= 8e18, "maximum emission rate of 8 beets per block exceeded");
+    ) {
+        require(
+            _beetsPerBlock <= 8e18,
+            "maximum emission rate of 8 beets per block exceeded"
+        );
         beets = _beets;
         treasuryAddress = _treasuryAddress;
         beetsPerBlock = _beetsPerBlock;
         startBlock = _startBlock;
-
     }
 
     function poolLength() external view returns (uint256) {
@@ -117,11 +148,14 @@ contract BeethovenxMasterChef is Ownable {
         );
         require(
             Address.isContract(address(_rewarder)) ||
-            address(_rewarder) == address(0),
+                address(_rewarder) == address(0),
             "add: rewarder must be contract or zero"
         );
         // we make sure the same LP cannot be added twice which would cause trouble
-        require(!lpTokenAddresses.contains(address(_lpToken)), "add: LP already added");
+        require(
+            !lpTokenAddresses.contains(address(_lpToken)),
+            "add: LP already added"
+        );
 
         massUpdatePools();
 
@@ -142,7 +176,12 @@ contract BeethovenxMasterChef is Ownable {
                 accBeetsPerShare: 0
             })
         );
-        emit LogPoolAddition(lpTokens.length - 1, _allocPoint, _lpToken, _rewarder);
+        emit LogPoolAddition(
+            lpTokens.length - 1,
+            _allocPoint,
+            _lpToken,
+            _rewarder
+        );
     }
 
     // Update the given pool's BEETS allocation point. Can only be called by the owner.
@@ -158,16 +197,26 @@ contract BeethovenxMasterChef is Ownable {
     ) public onlyOwner {
         require(
             Address.isContract(address(_rewarder)) ||
-            address(_rewarder) == address(0),
+                address(_rewarder) == address(0),
             "set: rewarder must be contract or zero"
         );
         massUpdatePools();
 
         // we re-adjust the total allocation points
-        totalAllocPoint = totalAllocPoint - poolInfo[_pid].allocPoint + _allocPoint;
+        totalAllocPoint =
+            totalAllocPoint -
+            poolInfo[_pid].allocPoint +
+            _allocPoint;
         poolInfo[_pid].allocPoint = _allocPoint;
-        if (overwrite) { rewarder[_pid] = _rewarder; }
-        emit LogSetPool(_pid, _allocPoint, overwrite ? _rewarder : rewarder[_pid], overwrite);
+        if (overwrite) {
+            rewarder[_pid] = _rewarder;
+        }
+        emit LogSetPool(
+            _pid,
+            _allocPoint,
+            overwrite ? _rewarder : rewarder[_pid],
+            overwrite
+        );
     }
 
     // View function to see pending BEETS on frontend.
@@ -186,18 +235,26 @@ contract BeethovenxMasterChef is Ownable {
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
             uint256 blocksSinceLastReward = block.number - pool.lastRewardBlock;
             // based on the pool weight (allocation points) we calculate the beets rewarded for this specific pool
-            uint256 beetsRewards = blocksSinceLastReward * beetsPerBlock * pool.allocPoint / totalAllocPoint;
+            uint256 beetsRewards =
+                (blocksSinceLastReward * beetsPerBlock * pool.allocPoint) /
+                    totalAllocPoint;
 
             // we take parts of the rewards for treasury, these can be subject to change, so we recalculate it
             // a value of 1000 = 100%
-            uint256 beetsRewardsForPool = beetsRewards * POOL_PERCENTAGE / 1000;
+            uint256 beetsRewardsForPool =
+                (beetsRewards * POOL_PERCENTAGE) / 1000;
 
             // we calculate the new amount of accumulated beets per LP token
-            accBeetsPerShare = accBeetsPerShare + (beetsRewardsForPool * ACC_BEETS_PRECISION / lpSupply);
+            accBeetsPerShare =
+                accBeetsPerShare +
+                ((beetsRewardsForPool * ACC_BEETS_PRECISION) / lpSupply);
         }
         // based on the number of LP tokens the user owns, we calculate the pending amount by subtracting the amount
         // which he is not eligible for (joined the pool later) or has already harvested
-        pending = user.amount * accBeetsPerShare / ACC_BEETS_PRECISION - user.rewardDebt;
+        pending =
+            (user.amount * accBeetsPerShare) /
+            ACC_BEETS_PRECISION -
+            user.rewardDebt;
     }
 
     // Update reward vairables for all pools. Be careful of gas spending!
@@ -209,34 +266,51 @@ contract BeethovenxMasterChef is Ownable {
     }
 
     // Update reward variables of the given pool to be up-to-date.
-    function updatePool(uint256 _pid) public returns (PoolInfo memory pool){
+    function updatePool(uint256 _pid) public returns (PoolInfo memory pool) {
         pool = poolInfo[_pid];
 
         if (block.number > pool.lastRewardBlock) {
             // total lp tokens staked for this pool
             uint256 lpSupply = lpTokens[_pid].balanceOf(address(this));
             if (lpSupply > 0) {
-//                uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-                uint256 blocksSinceLastReward = block.number - pool.lastRewardBlock;
+                //                uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
+                uint256 blocksSinceLastReward =
+                    block.number - pool.lastRewardBlock;
                 // rewards for this pool based on his allocation points
 
-                uint256 beetsRewards = blocksSinceLastReward * beetsPerBlock * pool.allocPoint / totalAllocPoint;
+                uint256 beetsRewards =
+                    (blocksSinceLastReward * beetsPerBlock * pool.allocPoint) /
+                        totalAllocPoint;
 
-                uint256 beetsRewardsForPool = beetsRewards * POOL_PERCENTAGE / 1000;
+                uint256 beetsRewardsForPool =
+                    (beetsRewards * POOL_PERCENTAGE) / 1000;
 
-                beets.mint(treasuryAddress, beetsRewards * TREASURY_PERCENTAGE / 1000);
+                beets.mint(
+                    treasuryAddress,
+                    (beetsRewards * TREASURY_PERCENTAGE) / 1000
+                );
                 beets.mint(address(this), beetsRewardsForPool);
-                pool.accBeetsPerShare = pool.accBeetsPerShare + (beetsRewardsForPool * ACC_BEETS_PRECISION / lpSupply);
+                pool.accBeetsPerShare =
+                    pool.accBeetsPerShare +
+                    ((beetsRewardsForPool * ACC_BEETS_PRECISION) / lpSupply);
             }
             pool.lastRewardBlock = block.number;
             poolInfo[_pid] = pool;
-            emit LogUpdatePool(_pid, pool.lastRewardBlock, lpSupply, pool.accBeetsPerShare);
+            emit LogUpdatePool(
+                _pid,
+                pool.lastRewardBlock,
+                lpSupply,
+                pool.accBeetsPerShare
+            );
         }
     }
 
     // Deposit LP tokens to MasterChef for BEETS allocation.
-    function deposit(uint256 _pid, uint256 _amount, address _to) public {
-
+    function deposit(
+        uint256 _pid,
+        uint256 _amount,
+        address _to
+    ) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][_to];
 
@@ -244,15 +318,17 @@ contract BeethovenxMasterChef is Ownable {
         // since we add more LP tokens, we have to keep track of the rewards he is not eligible for
         // if we would not do that, he would get rewards like he added them since the beginning of this pool
         // note that only the accBeetsPerShare have the precision applied
-        user.rewardDebt = user.rewardDebt + _amount * pool.accBeetsPerShare / ACC_BEETS_PRECISION;
+        user.rewardDebt =
+            user.rewardDebt +
+            (_amount * pool.accBeetsPerShare) /
+            ACC_BEETS_PRECISION;
 
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
             _rewarder.onBeetsReward(_pid, _to, _to, 0, user.amount);
         }
 
-
-        lpTokens[_pid].safeTransferFrom( msg.sender, address(this), _amount);
+        lpTokens[_pid].safeTransferFrom(msg.sender, address(this), _amount);
 
         emit Deposit(msg.sender, _pid, _amount, _to);
     }
@@ -265,7 +341,8 @@ contract BeethovenxMasterChef is Ownable {
         UserInfo storage user = userInfo[_pid][msg.sender];
 
         // this would  be the amount if the user joined right from the start of the farm
-        uint256 accumulatedBeets = user.amount * pool.accBeetsPerShare / ACC_BEETS_PRECISION;
+        uint256 accumulatedBeets =
+            (user.amount * pool.accBeetsPerShare) / ACC_BEETS_PRECISION;
         // subtracting the rewards the user is not eligible for
         uint256 eligibleBeets = accumulatedBeets - user.rewardDebt;
 
@@ -278,34 +355,60 @@ contract BeethovenxMasterChef is Ownable {
 
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeetsReward( _pid, msg.sender, _to, eligibleBeets, user.amount);
+            _rewarder.onBeetsReward(
+                _pid,
+                msg.sender,
+                _to,
+                eligibleBeets,
+                user.amount
+            );
         }
 
         emit Harvest(msg.sender, _pid, eligibleBeets);
     }
 
-
     /// @notice Withdraw LP tokens from MCV and harvest proceeds for transaction sender to `_to`.
     /// @param _pid The index of the pool. See `poolInfo`.
     /// @param _amount LP token amount to withdraw.
     /// @param _to Receiver of the LP tokens and BEETS rewards.
-    function withdrawAndHarvest(uint256 _pid, uint256 _amount, address _to) public {
+    function withdrawAndHarvest(
+        uint256 _pid,
+        uint256 _amount,
+        address _to
+    ) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
 
         // this would  be the amount if the user joined right from the start of the farm
-        uint256 accumulatedBeets = user.amount * pool.accBeetsPerShare / ACC_BEETS_PRECISION;
+        uint256 accumulatedBeets =
+            (user.amount * pool.accBeetsPerShare) / ACC_BEETS_PRECISION;
         // subtracting the rewards the user is not eligible for
         uint256 eligibleBeets = accumulatedBeets - user.rewardDebt;
 
-        user.rewardDebt = accumulatedBeets - _amount * pool.accBeetsPerShare / ACC_BEETS_PRECISION;
+        /*
+            after harvest & withdraw, he should be eligible for exactly 0 tokens
+            => userInfo.amount * pool.accBeetsPerShare / ACC_BEETS_PRECISION == userInfo.rewardDebt
+            since we are removing some LP's from userInfo.amount, we also have to remove
+            the equivalent amount of reward debt
+        */
+
+        user.rewardDebt =
+            accumulatedBeets -
+            (_amount * pool.accBeetsPerShare) /
+            ACC_BEETS_PRECISION;
         user.amount = user.amount - _amount;
 
         safeBeetsTransfer(_to, eligibleBeets);
 
         IRewarder _rewarder = rewarder[_pid];
         if (address(_rewarder) != address(0)) {
-            _rewarder.onBeetsReward(_pid, msg.sender, _to, eligibleBeets, user.amount);
+            _rewarder.onBeetsReward(
+                _pid,
+                msg.sender,
+                _to,
+                eligibleBeets,
+                user.amount
+            );
         }
 
         lpTokens[_pid].safeTransfer(_to, _amount);
@@ -340,15 +443,22 @@ contract BeethovenxMasterChef is Ownable {
             beets.transfer(_to, _amount);
         }
     }
+
     // Update treasury address by the previous treasury.
     function treasury(address _treasuryAddress) public {
-        require(msg.sender == treasuryAddress, "access denied: setting treasury address");
+        require(
+            msg.sender == treasuryAddress,
+            "access denied: setting treasury address"
+        );
         treasuryAddress = _treasuryAddress;
         emit SetTreasuryAddress(treasuryAddress, _treasuryAddress);
     }
 
     function updateEmissionRate(uint256 _beetsPerBlock) public onlyOwner {
-        require(_beetsPerBlock <= 8e18, "maximum emission rate of 8 beets per block exceeded");
+        require(
+            _beetsPerBlock <= 8e18,
+            "maximum emission rate of 8 beets per block exceeded"
+        );
         massUpdatePools();
         beetsPerBlock = _beetsPerBlock;
         emit UpdateEmissionRate(msg.sender, _beetsPerBlock);

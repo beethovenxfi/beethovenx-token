@@ -63,7 +63,7 @@ export async function deployContract<T>(contractName: string, constructorArgs: a
 export async function deployChef(
   beetsAddress: string,
   treasuryAddress: string,
-  beetsPerBlock: number = bn(100),
+  beetsPerBlock = bn(100),
   startBlock: number = 0
 ): Promise<BeethovenxMasterChef> {
   return deployContract("BeethovenxMasterChef", [beetsAddress, treasuryAddress, beetsPerBlock, startBlock])
