@@ -17,7 +17,7 @@ import "../token/BeethovenxMasterChef.sol";
 
 /*
     Additions:
-        - stake tokens in master chef farm on construction
+        - stake tokens on deposit in master chef pool
         - allow withdrawal of master chef rewards at any time
         - un-stake and transfer tokens to beneficiary on release
 */
