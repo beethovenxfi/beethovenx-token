@@ -29,7 +29,6 @@ describe("BeethovenxMasterChef", function () {
 
   // these are fixed values hardcoded in the contract
   // 1000 = 100 %
-  const treasuryPercentage = 128
   const lpPercentage = 872
   let beetsPerBlock: BigNumber = bn(6)
 

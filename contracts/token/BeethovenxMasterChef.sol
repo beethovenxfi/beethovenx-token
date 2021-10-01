@@ -256,7 +256,7 @@ contract BeethovenxMasterChef is Ownable {
             user.rewardDebt;
     }
 
-    // Update reward vairables for all pools. Be careful of gas spending!
+    // Update reward variables for all pools. Be careful of gas spending!
     function massUpdatePools() public {
         uint256 length = poolInfo.length;
         for (uint256 pid = 0; pid < length; ++pid) {
@@ -350,7 +350,7 @@ contract BeethovenxMasterChef is Ownable {
         // we set the new rewardDebt to the current accumulated amount of rewards for his amount of LP token
         user.rewardDebt = accumulatedBeets;
 
-        if (eligibleBeets != 0) {
+        if (eligibleBeets > 0) {
             safeBeetsTransfer(_to, eligibleBeets);
         }
 
@@ -379,6 +379,8 @@ contract BeethovenxMasterChef is Ownable {
     ) public {
         PoolInfo memory pool = updatePool(_pid);
         UserInfo storage user = userInfo[_pid][msg.sender];
+
+        require(_amount <= user.amount, "cannot withdraw more than deposited");
 
         // this would  be the amount if the user joined right from the start of the farm
         uint256 accumulatedBeets =

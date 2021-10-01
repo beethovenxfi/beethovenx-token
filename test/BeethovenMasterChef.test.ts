@@ -495,6 +495,23 @@ describe("BeethovenxMasterChef", function () {
     expect(await chef.pendingBeets(0, alice.address)).to.equal(alicePendingBeets425.add(lpRewards(5).div(4)))
     expect(await chef.pendingBeets(1, bob.address)).to.equal(lpRewards(5).mul(3).div(4))
   })
+
+  it("reverts when trying to withdraw more than deposited", async () => {
+    const beetsPerBlock = bn(6)
+    const chef = await deployChef(beets.address, treasury.address, beetsPerBlock, 300)
+    await beets.transferOwnership(chef.address)
+
+    const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
+    await lp.transfer(alice.address, "1000")
+
+    await chef.add("100", lp.address, ethers.constants.AddressZero)
+
+    await lp.connect(alice).approve(chef.address, bn(1000))
+
+    await chef.connect(alice).deposit(0, 10, alice.address)
+    await expect(chef.withdrawAndHarvest(0, 11, alice.address)).to.be.reverted
+    expect(await lp.balanceOf(chef.address)).to.equal(10)
+  })
 })
 
 function rewardsCalculator(beetsPerBlock: BigNumber, percentage: number) {
