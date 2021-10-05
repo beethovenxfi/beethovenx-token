@@ -169,8 +169,9 @@ contract BeethovenxMasterChef is Ownable {
         massUpdatePools();
 
         // respect startBlock!
-        uint256 lastRewardBlock =
-            block.number > startBlock ? block.number : startBlock;
+        uint256 lastRewardBlock = block.number > startBlock
+            ? block.number
+            : startBlock;
         totalAllocPoint = totalAllocPoint + _allocPoint;
 
         // LP tokens, rewarders & pools are always on the same index which translates into the pid
@@ -246,14 +247,14 @@ contract BeethovenxMasterChef is Ownable {
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
             uint256 blocksSinceLastReward = block.number - pool.lastRewardBlock;
             // based on the pool weight (allocation points) we calculate the beets rewarded for this specific pool
-            uint256 beetsRewards =
-                (blocksSinceLastReward * beetsPerBlock * pool.allocPoint) /
-                    totalAllocPoint;
+            uint256 beetsRewards = (blocksSinceLastReward *
+                beetsPerBlock *
+                pool.allocPoint) / totalAllocPoint;
 
             // we take parts of the rewards for treasury, these can be subject to change, so we recalculate it
             // a value of 1000 = 100%
-            uint256 beetsRewardsForPool =
-                (beetsRewards * POOL_PERCENTAGE) / 1000;
+            uint256 beetsRewardsForPool = (beetsRewards * POOL_PERCENTAGE) /
+                1000;
 
             // we calculate the new amount of accumulated beets per LP token
             accBeetsPerShare =
@@ -284,16 +285,16 @@ contract BeethovenxMasterChef is Ownable {
             // total lp tokens staked for this pool
             uint256 lpSupply = lpTokens[_pid].balanceOf(address(this));
             if (lpSupply > 0) {
-                uint256 blocksSinceLastReward =
-                    block.number - pool.lastRewardBlock;
+                uint256 blocksSinceLastReward = block.number -
+                    pool.lastRewardBlock;
 
                 // rewards for this pool based on his allocation points
-                uint256 beetsRewards =
-                    (blocksSinceLastReward * beetsPerBlock * pool.allocPoint) /
-                        totalAllocPoint;
+                uint256 beetsRewards = (blocksSinceLastReward *
+                    beetsPerBlock *
+                    pool.allocPoint) / totalAllocPoint;
 
-                uint256 beetsRewardsForPool =
-                    (beetsRewards * POOL_PERCENTAGE) / 1000;
+                uint256 beetsRewardsForPool = (beetsRewards * POOL_PERCENTAGE) /
+                    1000;
 
                 beets.mint(
                     treasuryAddress,
@@ -346,6 +347,14 @@ contract BeethovenxMasterChef is Ownable {
         emit Deposit(msg.sender, _pid, _amount, _to);
     }
 
+    function harvestAll(address _to) external {
+        for (uint256 pid = 0; pid < poolInfo.length; pid++) {
+            if (userInfo[pid][msg.sender].amount > 0) {
+                harvest(pid, _to);
+            }
+        }
+    }
+
     /// @notice Harvest proceeds for transaction sender to `_to`.
     /// @param _pid The index of the pool. See `poolInfo`.
     /// @param _to Receiver of BEETS rewards.
@@ -354,8 +363,8 @@ contract BeethovenxMasterChef is Ownable {
         UserInfo storage user = userInfo[_pid][msg.sender];
 
         // this would  be the amount if the user joined right from the start of the farm
-        uint256 accumulatedBeets =
-            (user.amount * pool.accBeetsPerShare) / ACC_BEETS_PRECISION;
+        uint256 accumulatedBeets = (user.amount * pool.accBeetsPerShare) /
+            ACC_BEETS_PRECISION;
         // subtracting the rewards the user is not eligible for
         uint256 eligibleBeets = accumulatedBeets - user.rewardDebt;
 
@@ -395,8 +404,8 @@ contract BeethovenxMasterChef is Ownable {
         require(_amount <= user.amount, "cannot withdraw more than deposited");
 
         // this would  be the amount if the user joined right from the start of the farm
-        uint256 accumulatedBeets =
-            (user.amount * pool.accBeetsPerShare) / ACC_BEETS_PRECISION;
+        uint256 accumulatedBeets = (user.amount * pool.accBeetsPerShare) /
+            ACC_BEETS_PRECISION;
         // subtracting the rewards the user is not eligible for
         uint256 eligibleBeets = accumulatedBeets - user.rewardDebt;
 
