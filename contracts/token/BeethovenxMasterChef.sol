@@ -459,12 +459,8 @@ contract BeethovenxMasterChef is Ownable {
         }
     }
 
-    // Update treasury address by the previous treasury.
-    function treasury(address _treasuryAddress) public {
-        require(
-            msg.sender == treasuryAddress,
-            "access denied: setting treasury address"
-        );
+    // Update treasury address by the owner.
+    function treasury(address _treasuryAddress) public onlyOwner {
         treasuryAddress = _treasuryAddress;
         emit SetTreasuryAddress(treasuryAddress, _treasuryAddress);
     }

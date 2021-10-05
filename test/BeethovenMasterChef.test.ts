@@ -88,20 +88,20 @@ describe("BeethovenxMasterChef", function () {
     await expect(chef.connect(owner).updateEmissionRate(bn(9))).to.be.revertedWith("maximum emission rate of 6 beets per block exceeded")
   })
 
-  it("allows treasury address to update themselves", async function () {
+  it("allows treasury address to be update by owner", async function () {
     const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
     expect(await chef.treasuryAddress()).to.equal(treasury.address)
-    await chef.connect(treasury).treasury(bob.address)
+    await chef.connect(owner).treasury(bob.address)
     expect(await chef.treasuryAddress()).to.equal(bob.address)
   })
 
-  it("allows only the current treasury address to change its address", async function () {
+  it("reverts if anyone but the owner updates the treasury address", async function () {
     const chef = await deployChef(beets.address, treasury.address, bn(6), 200)
     await beets.transferOwnership(chef.address)
 
-    await expect(chef.connect(bob).treasury(bob.address)).to.be.revertedWith("access denied: setting treasury address")
+    await expect(chef.connect(bob).treasury(bob.address)).to.be.revertedWith("Ownable: caller is not the owner")
   })
 
   it("returns amount of pools", async function () {
