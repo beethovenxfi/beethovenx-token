@@ -6,6 +6,7 @@ import { stdout } from "./utils/stdout"
 import { timelockQueueQuestions } from "./utils/timelock"
 import {
   addMasterChefPool,
+  listPools,
   setMasterChefPool,
   setTreasuryAddress,
   timelocked_addMasterChefPool,
@@ -161,6 +162,14 @@ async function main() {
         txHash = await setTreasuryAddress(answers.address)
       }
       stdout.printStepDone(`done with tx ${txHash}`)
+    })
+
+  program
+    .command("list-pools")
+    .description("list pools")
+    .action(async () => {
+      await printNetwork()
+      await listPools()
     })
 
   await program.parseAsync(process.argv)

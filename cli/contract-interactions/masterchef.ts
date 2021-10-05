@@ -3,6 +3,7 @@ import { scriptConfig } from "../cli-config"
 import { manageTimelockTransaction } from "./time-lock-transactions"
 import { BeethovenxMasterChef } from "../../types"
 import { BigNumber } from "ethers"
+import { stdout } from "../utils/stdout"
 
 const config = scriptConfig[network.config.chainId!]
 
@@ -29,8 +30,7 @@ export async function timelocked_addMasterChefPool(allocationPoints: number, lpA
       },
       eta: eta,
     },
-    "queue",
-    config.contractAddresses.Timelock
+    "queue"
   )
 }
 
@@ -63,8 +63,7 @@ export async function timelocked_setMasterChefPool(
       },
       eta: eta,
     },
-    "queue",
-    config.contractAddresses.Timelock
+    "queue"
   )
 }
 
@@ -91,8 +90,7 @@ export async function timelocked_updateEmissionRate(beetsPerBlock: BigNumber, et
       },
       eta: eta,
     },
-    "queue",
-    config.contractAddresses.Timelock
+    "queue"
   )
 }
 
@@ -119,7 +117,21 @@ export async function timelocked_setTreasuryAddress(address: string, eta: number
       },
       eta: eta,
     },
-    "queue",
-    config.contractAddresses.Timelock
+    "queue"
   )
+}
+
+export async function listPools() {
+  const chef = (await ethers.getContractAt("BeethovenxMasterChef", config.contractAddresses.MasterChef)) as BeethovenxMasterChef
+  const poolsLength = await chef.poolLength()
+  for (let pid = 0; pid < poolsLength.toNumber(); pid++) {
+    const { allocPoint, accBeetsPerShare, lastRewardBlock } = await chef.poolInfo(pid)
+    const lpTokenAddess = await chef.lpTokens(pid)
+    stdout.printInfo(`PID: ${pid}`)
+    stdout.printInfo(`lpAddress: ${lpTokenAddess}`)
+    stdout.printInfo(`allocationPoints: ${allocPoint.toString()}`)
+    stdout.printInfo(`accBeetsPerShare: ${accBeetsPerShare.toString()}`)
+    stdout.printInfo(`lastRewardBlock: ${lastRewardBlock.toString()}`)
+    stdout.printInfo(`--------------------------------------------------`)
+  }
 }
