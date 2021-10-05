@@ -88,7 +88,7 @@ describe("BeethovenxMasterChef", function () {
     await expect(chef.connect(owner).updateEmissionRate(bn(9))).to.be.revertedWith("maximum emission rate of 6 beets per block exceeded")
   })
 
-  it("allows treasury address to be update by owner", async function () {
+  it("allows treasury address to be updated by owner", async function () {
     const chef = await deployChef(beets.address, treasury.address, bn(6), 0)
     await beets.transferOwnership(chef.address)
 
