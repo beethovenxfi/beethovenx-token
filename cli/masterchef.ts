@@ -18,7 +18,7 @@ import { bn } from "../test/utilities"
 
 dotenv.config()
 
-const program = new commander.Command("masterchef")
+const program = new commander.Command("masterchef-cli")
 
 async function main() {
   program

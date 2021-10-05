@@ -1,9 +1,9 @@
 import path from "path"
 import fs from "fs"
 import { ethers, network } from "hardhat"
-import { StoredTimelockTransaction } from "../utils/timelock"
 import { scriptConfig } from "../cli-config"
-import { manageTimelockTransaction, TimelockTransactionAction } from "./time-lock-transactions"
+import { manageTimelockTransaction } from "./time-lock-transactions"
+import { StoredTimelockTransaction, TimelockTransactionAction } from "../types"
 
 const storedTransactions: Record<
   string,

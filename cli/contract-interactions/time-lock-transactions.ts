@@ -3,31 +3,16 @@ import fs from "fs"
 import { ethers, network } from "hardhat"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signer-with-address"
 
-import { StoredTimelockTransaction } from "../utils/timelock"
 import { scriptConfig } from "../cli-config"
+import { StoredTimelockTransaction, TimelockTransaction, TimelockTransactionAction } from "../types"
 
 const storedTransactions: Record<
   string,
   StoredTimelockTransaction
   // eslint-disable-next-line @typescript-eslint/no-var-requires
 > = require(`../../.timelock/transactions.${network.name}.json`)
-export type TimelockTransactionAction = "queue" | "execute"
 
 const config = scriptConfig[network.config.chainId!]
-
-export type TimelockTransaction = {
-  targetContract: {
-    name: string
-    address: string
-  }
-  targetFunction: {
-    identifier: string
-    args: any[]
-  }
-  // eth sent with transaction
-  value: number
-  eta: number // in unix seconds
-}
 
 export async function manageTimelockTransaction(
   timelockAdmin: SignerWithAddress,

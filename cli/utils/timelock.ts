@@ -1,6 +1,6 @@
 import moment from "moment"
 import { network } from "hardhat"
-import { TimelockTransaction } from "../contract-interactions/time-lock-transactions"
+import { StoredTimelockTransaction } from "../types"
 
 const isMainnet = network.name === process.env.MAINNET
 
@@ -36,11 +36,6 @@ export const timelockQueueQuestions = [
       : moment().add(12, "minutes").unix(),
   },
 ]
-
-export type StoredTimelockTransaction = TimelockTransaction & {
-  executed: boolean
-  executeTxHash?: string
-}
 
 export function getTimelockTransactionIds(onlyExecutable = true) {
   if (onlyExecutable) {

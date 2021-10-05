@@ -15,7 +15,7 @@ import {
 
 dotenv.config()
 
-const program = new commander.Command("timelock")
+const program = new commander.Command("timelock-cli")
 
 async function main() {
   program
