@@ -1,1 +1,1 @@
-{}
+{"1633425515-BeethovenxMasterChef-0xde37A65C454EB4b0FA0622e47b4B75fc23525b19-updateEmissionRate-[5040000000000000000]":{"targetContract":{"name":"BeethovenxMasterChef","address":"0xde37A65C454EB4b0FA0622e47b4B75fc23525b19"},"value":0,"targetFunction":{"identifier":"updateEmissionRate","args":[{"type":"BigNumber","hex":"0x45f1ad4c03f80000"}]},"eta":1633425515,"executed":false}}

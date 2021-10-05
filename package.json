@@ -55,7 +55,8 @@
     "prettier": "prettier --write test/**/*.ts && prettier --write contracts/**/*.sol",
     "lint": "yarn prettier && solhint -c .solhint.json contracts/**/*.sol",
     "prepublishOnly": "yarn run build && node scripts/prepublish.js",
-    "masterchef-cli": "ts-node -r dotenv/config --transpile-only scripts/cli/masterchef-cli.ts"
+    "masterchef-cli": "ts-node -r dotenv/config --transpile-only cli/masterchef.ts",
+    "timelock-cli": "ts-node -r dotenv/config --transpile-only cli/time-lock.ts"
   },
   "devDependencies": {
     "@boringcrypto/boring-solidity": "boringcrypto/BoringSolidity",

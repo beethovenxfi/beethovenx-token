@@ -14,7 +14,7 @@ import {
   timelocked_updateEmissionRate,
   updateEmissionRate,
 } from "./contract-interactions/masterchef"
-import { bn } from "../../test/utilities"
+import { bn } from "../test/utilities"
 
 dotenv.config()
 
@@ -113,19 +113,19 @@ async function main() {
 
   program
     .command("update-emission-rate")
-    .description("update beets emission rate to the base 1e15")
+    .description("update beets emission rate to the base 1e16")
     .action(async () => {
       await printNetwork()
       const answers = await inquirer.prompt([
         {
           name: "beetsPerBlock",
           type: "input",
-          message: "Beets/Block * 1e15",
+          message: "Beets/Block * 1e16",
         },
         ...timelockQueueQuestions,
       ])
 
-      const beetsPerBlock = bn(answers.beetsPerBlock).mul(1e15)
+      const beetsPerBlock = bn(answers.beetsPerBlock, 16)
 
       let txHash
       if (answers.timelock) {

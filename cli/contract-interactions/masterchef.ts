@@ -1,7 +1,7 @@
 import { ethers, network } from "hardhat"
 import { scriptConfig } from "../cli-config"
-import { manageTimelockTransaction } from "../time-lock-transactions"
-import { BeethovenxMasterChef } from "../../../types"
+import { manageTimelockTransaction } from "./time-lock-transactions"
+import { BeethovenxMasterChef } from "../../types"
 import { BigNumber } from "ethers"
 
 const config = scriptConfig[network.config.chainId!]

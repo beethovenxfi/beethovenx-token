@@ -2,8 +2,9 @@ import path from "path"
 import fs from "fs"
 import { ethers, network } from "hardhat"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signer-with-address"
-import { StoredTimelockTransaction } from "./utils/timelock"
-import { scriptConfig } from "./cli-config"
+
+import { StoredTimelockTransaction } from "../utils/timelock"
+import { scriptConfig } from "../cli-config"
 
 const storedTransactions: Record<
   string,
@@ -31,11 +32,10 @@ export type TimelockTransaction = {
 export async function manageTimelockTransaction(
   timelockAdmin: SignerWithAddress,
   transaction: TimelockTransaction,
-  type: TimelockTransactionAction,
-  timelockContractAddress: string
+  type: TimelockTransactionAction
 ): Promise<string> {
   // stdout.printInfo(`${type} transaction with ${JSON.stringify(transaction)}`);
-  const timelockContract = await ethers.getContractAt("Timelock", timelockContractAddress)
+  const timelockContract = await ethers.getContractAt("Timelock", config.contractAddresses.Timelock)
   const targetContract = await ethers.getContractAt(transaction.targetContract.name, transaction.targetContract.address)
 
   // encode function data with params
@@ -52,7 +52,7 @@ export async function manageTimelockTransaction(
       executed: false,
     }
     fs.writeFileSync(
-      path.join(__dirname, `../../../.timelock/transactions.${network.name}.json`),
+      path.join(__dirname, `../../.timelock/transactions.${network.name}.json`),
       JSON.stringify({
         ...storedTransactions,
         [`${transaction.eta}-${transaction.targetContract.name}-${transaction.targetContract.address}-${
