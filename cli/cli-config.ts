@@ -1,5 +1,3 @@
-export type ScriptContractName = "Authorizer" | "Vault" | "Timelock" | "ProtocolFeesCollector"
-
 type CliConfigContent = {
   contractAddresses: {
     MasterChef: string
