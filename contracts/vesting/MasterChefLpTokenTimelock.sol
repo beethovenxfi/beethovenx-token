@@ -89,8 +89,10 @@ contract MasterChefLpTokenTimelock {
             "TokenTimelock: current time is before release time"
         );
 
-        (uint256 amount, uint256 rewardDebt) =
-            _masterChef.userInfo(masterChefPoolId(), address(this));
+        (uint256 amount, uint256 rewardDebt) = _masterChef.userInfo(
+            masterChefPoolId(),
+            address(this)
+        );
         // withdraw & harvest all from master chef
         _masterChef.withdrawAndHarvest(
             masterChefPoolId(),
@@ -125,10 +127,6 @@ contract MasterChefLpTokenTimelock {
     }
 
     function harvest() external {
-        require(
-            msg.sender == beneficiary(),
-            "only beneficiary can call harvest"
-        );
         _masterChef.harvest(masterChefPoolId(), beneficiary());
     }
 }

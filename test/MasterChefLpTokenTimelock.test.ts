@@ -109,7 +109,7 @@ describe("BeethovenxMasterChef", function () {
     expect(amount).to.equal(lpAmount)
   })
 
-  it("allows beneficiary to harvest master chef rewards", async () => {
+  it("allows harvesting of master chef rewards", async () => {
     const lpRewards = rewardsCalculator(beetsPerBlock, lpPercentage)
     const lp = await deployERC20Mock("LP", "LP", 10_000)
 
@@ -138,34 +138,9 @@ describe("BeethovenxMasterChef", function () {
     expect(await chef.pendingBeets(0, tokenTimelock.address)).to.equal(expectedRewards)
 
     await advanceBlockRelativeTo(tx, 19)
-    await tokenTimelock.connect(bob).harvest()
+    await tokenTimelock.harvest()
 
     expect(await beets.balanceOf(bob.address)).to.equal(lpRewards(20))
-  })
-
-  it("denies anyone but beneficiary to call harvest", async () => {
-    const lp = await deployERC20Mock("LP", "LP", 10_000)
-
-    await chef.add(10, lp.address, ethers.constants.AddressZero)
-    const releaseTime = moment().add(1, "year")
-
-    const tokenTimelock = await deployContract<MasterChefLpTokenTimelock>("MasterChefLpTokenTimelock", [
-      lp.address,
-      bob.address,
-      releaseTime.unix(),
-      chef.address,
-      0,
-    ])
-
-    // lets give bob some tokens and transfer them to the vesting contract
-    const lpAmount = 1000
-    await lp.transfer(bob.address, lpAmount)
-    await lp.connect(bob).approve(tokenTimelock.address, lpAmount)
-
-    // deposit them to the vesting contract which deposits it into master chef
-    await tokenTimelock.connect(bob).depositAllToMasterChef(lpAmount)
-
-    await expect(tokenTimelock.harvest()).to.be.revertedWith("only beneficiary can call harvest")
   })
 
   it("releases vested tokens deposited to master chef after release time has passed", async () => {
