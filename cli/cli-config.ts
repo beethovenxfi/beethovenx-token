@@ -18,9 +18,9 @@ export const scriptConfig: CliConfig = {
   },
   4: {
     contractAddresses: {
-      MasterChef: "0x748802AC3cBA3cEa85791b94F71d1Aa33F2a8233",
+      MasterChef: "0x0e317Aa06F6C759a724ecD43548FB77bF5baC5b9",
       Timelock: "",
-      BeethovenxToken: "0xe4B88E745Dce9084B9fc2439F85A9a4C5CD6f361",
+      BeethovenxToken: "0x819091705aAa56f87D02a5bB7a829550C8F5313D",
     },
   },
 }
