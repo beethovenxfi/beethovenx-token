@@ -522,7 +522,7 @@ describe("BeethovenxMasterChef", function () {
     expect(await lp.balanceOf(chef.address)).to.equal(10)
   })
 
-  it("allows harvesting from all pools", async () => {
+  it("allows harvesting from all specified pools", async () => {
     const beetsPerBlock = bn(6)
     const lpRewards = rewardsCalculator(beetsPerBlock, lpPercentage)
     const chef = await deployChef(beets.address, treasury.address, beetsPerBlock, 300)
@@ -531,14 +531,17 @@ describe("BeethovenxMasterChef", function () {
     const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
     const lp2 = await deployERC20Mock("Lp 2", "lp2", 10_000)
     const lp3 = await deployERC20Mock("Lp 3", "lp3", 10_000)
+    const lp4 = await deployERC20Mock("Lp 4", "lp4", 10_000)
 
     await lp.transfer(alice.address, "1000")
     await lp2.transfer(alice.address, "1000")
     await lp3.transfer(alice.address, "1000")
+    await lp4.transfer(bob.address, "1000")
 
     await chef.add("100", lp.address, ethers.constants.AddressZero)
     await chef.add("100", lp2.address, ethers.constants.AddressZero)
     await chef.add("100", lp3.address, ethers.constants.AddressZero)
+    await chef.add("100", lp4.address, ethers.constants.AddressZero)
 
     await setAutomineBlocks(false)
     await lp.connect(alice).approve(chef.address, bn(1000))
@@ -547,13 +550,15 @@ describe("BeethovenxMasterChef", function () {
     await chef.connect(alice).deposit(1, 10, alice.address)
     await lp3.connect(alice).approve(chef.address, bn(1000))
     await chef.connect(alice).deposit(2, 10, alice.address)
+    await lp4.connect(bob).approve(chef.address, bn(1000))
+    await chef.connect(bob).deposit(3, 10, bob.address)
     await setAutomineBlocks(true)
 
     await advanceBlockTo(((await ethers.provider.getBlockNumber()) + 10).toString())
 
-    const expectedBeets = lpRewards(10)
+    const expectedBeets = lpRewards(10).mul(2).div(4)
 
-    await chef.connect(alice).harvestAll(alice.address)
+    await chef.connect(alice).harvestAll([0, 1], alice.address)
     expect(await beets.balanceOf(alice.address)).to.equal(expectedBeets)
   })
 })

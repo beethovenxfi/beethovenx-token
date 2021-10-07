@@ -347,10 +347,10 @@ contract BeethovenxMasterChef is Ownable {
         emit Deposit(msg.sender, _pid, _amount, _to);
     }
 
-    function harvestAll(address _to) external {
-        for (uint256 pid = 0; pid < poolInfo.length; pid++) {
-            if (userInfo[pid][msg.sender].amount > 0) {
-                harvest(pid, _to);
+    function harvestAll(uint256[] calldata _pids, address _to) external {
+        for (uint256 i = 0; i < _pids.length; i++) {
+            if (userInfo[_pids[i]][msg.sender].amount > 0) {
+                harvest(_pids[i], _to);
             }
         }
     }
