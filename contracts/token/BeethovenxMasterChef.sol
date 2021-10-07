@@ -166,8 +166,6 @@ contract BeethovenxMasterChef is Ownable {
             "add: LP already added"
         );
 
-        massUpdatePools();
-
         // respect startBlock!
         uint256 lastRewardBlock = block.number > startBlock
             ? block.number
@@ -210,7 +208,6 @@ contract BeethovenxMasterChef is Ownable {
                 address(_rewarder) == address(0),
             "set: rewarder must be contract or zero"
         );
-        massUpdatePools();
 
         // we re-adjust the total allocation points
         totalAllocPoint =
@@ -269,11 +266,12 @@ contract BeethovenxMasterChef is Ownable {
             user.rewardDebt;
     }
 
-    // Update reward variables for all pools. Be careful of gas spending!
-    function massUpdatePools() public {
-        uint256 length = poolInfo.length;
-        for (uint256 pid = 0; pid < length; ++pid) {
-            updatePool(pid);
+    /// @notice Update reward variables for all pools. Be careful of gas spending!
+    /// @param pids Pool IDs of all to be updated. Make sure to update all active pools.
+    function massUpdatePools(uint256[] calldata pids) external {
+        uint256 len = pids.length;
+        for (uint256 i = 0; i < len; ++i) {
+            updatePool(pids[i]);
         }
     }
 
@@ -479,7 +477,6 @@ contract BeethovenxMasterChef is Ownable {
             _beetsPerBlock <= 6e18,
             "maximum emission rate of 6 beets per block exceeded"
         );
-        massUpdatePools();
         beetsPerBlock = _beetsPerBlock;
         emit UpdateEmissionRate(msg.sender, _beetsPerBlock);
     }

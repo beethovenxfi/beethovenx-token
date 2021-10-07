@@ -489,7 +489,11 @@ describe("BeethovenxMasterChef", function () {
     await advanceBlockTo("419")
 
     // Add LP2 to the pool with allocation 2 at block 420
+    await setAutomineBlocks(false)
+    await chef.massUpdatePools([0])
     await chef.add("30", lp2.address, ethers.constants.AddressZero) // 420
+    await setAutomineBlocks(true)
+    await advanceBlock()
     const alicePending420 = lpRewards(10)
     expect(await chef.pendingBeets(0, alice.address)).to.equal(alicePending420)
 
