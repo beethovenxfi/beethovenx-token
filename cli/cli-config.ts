@@ -11,8 +11,8 @@ type CliConfig = Record<number, CliConfigContent>
 export const scriptConfig: CliConfig = {
   250: {
     contractAddresses: {
-      MasterChef: "",
-      Timelock: "",
+      MasterChef: "0x8166994d9ebBe5829EC86Bd81258149B87faCfd3",
+      Timelock: "0xb5caee3cd5d86c138f879b3abc5b1bebb63c6471",
       BeethovenxToken: "",
     },
   },
