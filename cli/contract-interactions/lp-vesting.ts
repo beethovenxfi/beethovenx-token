@@ -1,7 +1,7 @@
 import { BigNumber } from "ethers"
 import { ethers, network } from "hardhat"
 import { scriptConfig } from "../cli-config"
-import { ERC20, IERC20, MasterChefLpTokenTimelock } from "../../types"
+import { BeethovenxMasterChef, ERC20, IERC20, MasterChefLpTokenTimelock } from "../../types"
 import inquirer from "inquirer"
 import { stdout } from "../utils/stdout"
 
@@ -41,6 +41,13 @@ export async function vestLps(vestingContract: string, amount: BigNumber, benefi
     return receipt.transactionHash
   }
 }
+
+export async function listVestedAmount(vestingContract: string) {
+  const chef = (await ethers.getContractAt("BeethovenxMasterChef", config.contractAddresses.MasterChef)) as BeethovenxMasterChef
+  const userInfo = await chef.userInfo(0, vestingContract)
+  stdout.printInfo(`Deposited amount for ${vestingContract}: ${userInfo.amount}`)
+}
+
 function percentageOf(value: BigNumber, percentage: number) {
   return value.mul(percentage).div(1000)
 }

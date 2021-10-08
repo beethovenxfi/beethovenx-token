@@ -3,7 +3,8 @@ import commander from "commander"
 import { printNetwork } from "./utils/network"
 import inquirer from "inquirer"
 import { stdout } from "./utils/stdout"
-import { printPercentageAmount, vestLps } from "./contract-interactions/lp-vesting"
+import { listVestedAmount, printPercentageAmount, vestLps } from "./contract-interactions/lp-vesting"
+import { listPools } from "./contract-interactions/masterchef"
 
 dotenv.config()
 
@@ -51,6 +52,21 @@ async function main() {
       stdout.printStep(`Vesting ${answers.amount} into ${answers.contract}\n`)
       const txHash = await vestLps(answers.contract, answers.amount, answers.beneficiary)
       stdout.printStepDone(`done with tx ${txHash}`)
+    })
+
+  program
+    .command("show-deposit")
+    .description("show deposited amount")
+    .action(async () => {
+      await printNetwork()
+      const answers = await inquirer.prompt([
+        {
+          name: "contract",
+          type: "input",
+          message: "vesting contract",
+        },
+      ])
+      await listVestedAmount(answers.contract)
     })
 
   await program.parseAsync(process.argv)
