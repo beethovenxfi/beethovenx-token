@@ -32,9 +32,10 @@ export async function vestLps(vestingContract: string, amount: BigNumber, benefi
     },
   ])
   if (answers.confirm) {
-    console.log("bbbbbbbbbbbbbbbbbbbbbb")
     await lp.connect(lbpFunds).approve(vesting.address, amount)
-    console.log("approoooooooooooove")
+    await new Promise((resolve) => {
+      setTimeout(resolve, 3000)
+    })
     const tx = await vesting.connect(lbpFunds).depositAllToMasterChef(amount)
     const receipt = await tx.wait()
     return receipt.transactionHash

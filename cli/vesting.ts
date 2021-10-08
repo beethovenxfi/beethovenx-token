@@ -2,20 +2,7 @@ import dotenv from "dotenv"
 import commander from "commander"
 import { printNetwork } from "./utils/network"
 import inquirer from "inquirer"
-import { timelockQueueQuestions } from "./utils/timelock"
 import { stdout } from "./utils/stdout"
-import {
-  addMasterChefPool,
-  listPools,
-  setMasterChefPool,
-  setTreasuryAddress,
-  timelocked_addMasterChefPool,
-  timelocked_setMasterChefPool,
-  timelocked_setTreasuryAddress,
-  timelocked_updateEmissionRate,
-  updateEmissionRate,
-} from "./contract-interactions/masterchef"
-import { bn } from "../test/utilities"
 import { printPercentageAmount, vestLps } from "./contract-interactions/lp-vesting"
 
 dotenv.config()
@@ -62,7 +49,7 @@ async function main() {
       ])
 
       stdout.printStep(`Vesting ${answers.amount} into ${answers.contract}\n`)
-      const txHash = await vestLps(answers.contract, answers.amount)
+      const txHash = await vestLps(answers.contract, answers.amount, answers.beneficiary)
       stdout.printStepDone(`done with tx ${txHash}`)
     })
 
