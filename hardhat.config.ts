@@ -16,7 +16,7 @@ import "solidity-coverage"
 import { HardhatUserConfig } from "hardhat/types"
 import { removeConsoleLog } from "hardhat-preprocessor"
 
-const accounts = [`0x${process.env.DEPLOYER!}`, `0x${process.env.ADMIN!}`]
+const accounts = [`0x${process.env.DEPLOYER!}`, `0x${process.env.ADMIN!}`, `0x${process.env.LBP_FUND!}`]
 
 const config: HardhatUserConfig = {
   abiExporter: {
