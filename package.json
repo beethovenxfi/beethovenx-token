@@ -57,7 +57,8 @@
     "prepublishOnly": "yarn run build && node scripts/prepublish.js",
     "masterchef-cli": "ts-node -r dotenv/config --transpile-only cli/masterchef.ts",
     "timelock-cli": "ts-node -r dotenv/config --transpile-only cli/time-lock.ts",
-    "vesting-cli": "ts-node -r dotenv/config --transpile-only cli/vesting.ts"
+    "vesting-cli": "ts-node -r dotenv/config --transpile-only cli/vesting.ts",
+    "token-cli": "ts-node -r dotenv/config --transpile-only cli/token.ts"
   },
   "devDependencies": {
     "@boringcrypto/boring-solidity": "boringcrypto/BoringSolidity",
