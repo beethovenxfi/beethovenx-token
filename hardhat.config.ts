@@ -16,7 +16,7 @@ import "solidity-coverage"
 import { HardhatUserConfig } from "hardhat/types"
 import { removeConsoleLog } from "hardhat-preprocessor"
 
-const accounts = [`0x${process.env.DEPLOYER!}`, `0x${process.env.ADMIN!}`, `0x${process.env.LBP_FUND!}`]
+const accounts = [`0x${process.env.DEPLOYER!}`, `0x${process.env.ADMIN!}`]
 
 const config: HardhatUserConfig = {
   abiExporter: {
@@ -56,7 +56,7 @@ const config: HardhatUserConfig = {
       chainId: 250,
       live: true,
       saveDeployments: true,
-      gasMultiplier: 2,
+      gasMultiplier: 10,
     },
     // "fantom-testnet": {
     //   url: "https://rpc.testnet.fantom.network",
