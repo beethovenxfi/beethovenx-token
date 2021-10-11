@@ -43,7 +43,7 @@ contract Timelock {
     );
 
     uint256 public constant GRACE_PERIOD = 14 days;
-    uint256 public constant MINIMUM_DELAY = 2 days;
+    uint256 public constant MINIMUM_DELAY = 6 hours;
     uint256 public constant MAXIMUM_DELAY = 30 days;
 
     address public admin;
@@ -135,8 +135,9 @@ contract Timelock {
             "Timelock::queueTransaction: Estimated execution block must satisfy delay."
         );
 
-        bytes32 txHash =
-            keccak256(abi.encode(target, value, signature, data, eta));
+        bytes32 txHash = keccak256(
+            abi.encode(target, value, signature, data, eta)
+        );
         queuedTransactions[txHash] = true;
 
         emit QueueTransaction(txHash, target, value, signature, data, eta);
@@ -155,8 +156,9 @@ contract Timelock {
             "Timelock::cancelTransaction: Call must come from admin."
         );
 
-        bytes32 txHash =
-            keccak256(abi.encode(target, value, signature, data, eta));
+        bytes32 txHash = keccak256(
+            abi.encode(target, value, signature, data, eta)
+        );
         queuedTransactions[txHash] = false;
 
         emit CancelTransaction(txHash, target, value, signature, data, eta);
@@ -174,8 +176,9 @@ contract Timelock {
             "Timelock::executeTransaction: Call must come from admin."
         );
 
-        bytes32 txHash =
-            keccak256(abi.encode(target, value, signature, data, eta));
+        bytes32 txHash = keccak256(
+            abi.encode(target, value, signature, data, eta)
+        );
         require(
             queuedTransactions[txHash],
             "Timelock::executeTransaction: Transaction hasn't been queued."
@@ -203,8 +206,9 @@ contract Timelock {
         }
 
         // solium-disable-next-line security/no-call-value
-        (bool success, bytes memory returnData) =
-            target.call{value: value}(callData);
+        (bool success, bytes memory returnData) = target.call{value: value}(
+            callData
+        );
         require(
             success,
             "Timelock::executeTransaction: Transaction execution reverted."
