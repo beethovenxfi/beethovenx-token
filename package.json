@@ -62,6 +62,8 @@
   },
   "devDependencies": {
     "@boringcrypto/boring-solidity": "boringcrypto/BoringSolidity",
+    "@gnosis.pm/safe-core-sdk": "^0.3.1",
+    "@gnosis.pm/safe-ethers-adapters": "^0.1.0-alpha.3",
     "@nomiclabs/hardhat-ethers": "^2.0.2",
     "@nomiclabs/hardhat-etherscan": "^2.1.5",
     "@nomiclabs/hardhat-solhint": "^2.0.0",
