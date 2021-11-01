@@ -80,12 +80,18 @@ contract TimeBasedRewarder is IRewarder, Ownable {
                 ((userPoolInfo.amount * pool.accRewardTokenPerShare) /
                     ACC_TOKEN_PRECISION) -
                 userPoolInfo.rewardDebt;
-            rewardToken.safeTransfer(recipient, pending);
+            if (pending > rewardToken.balanceOf(address(this))) {
+                pending = rewardToken.balanceOf(address(this));
+            }
         }
         userPoolInfo.amount = newLpAmount;
         userPoolInfo.rewardDebt =
             (newLpAmount * pool.accRewardTokenPerShare) /
             ACC_TOKEN_PRECISION;
+
+        if (pending > 0) {
+            rewardToken.safeTransfer(recipient, pending);
+        }
 
         emit LogOnReward(userAddress, pid, pending, recipient);
     }
@@ -193,6 +199,9 @@ contract TimeBasedRewarder is IRewarder, Ownable {
             pending =
                 ((user.amount * accRewardTokenPerShare) / ACC_TOKEN_PRECISION) -
                 user.rewardDebt;
+            if (pending > rewardToken.balanceOf(address(this))) {
+                pending = rewardToken.balanceOf(address(this));
+            }
         }
     }
 

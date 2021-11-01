@@ -1,18 +1,7 @@
 import { BeethovenxMasterChef, BeethovenxToken, TimeBasedRewarder } from "../types"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 import { ethers } from "hardhat"
-import {
-  advanceBlock,
-  advanceTime,
-  advanceTimeAndBlock,
-  advanceToTime,
-  bn,
-  deployChef,
-  deployContract,
-  deployERC20Mock,
-  latest,
-  setAutomineBlocks,
-} from "./utilities"
+import { advanceBlock, advanceToTime, bn, deployChef, deployContract, deployERC20Mock, latest, setAutomineBlocks } from "./utilities"
 import { expect } from "chai"
 
 describe("TimeBasedRewarder", function () {
@@ -103,23 +92,26 @@ describe("TimeBasedRewarder", function () {
     await expect(rewarder.set(0, 10)).to.be.revertedWith("Pool does not exist")
   })
 
-  it("transfers correct amount of rewarder tokens on harvest call for single pool", async () => {
+  it("returns correct amount of pending reward tokens for single pool", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
     const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
 
-    await chef.add(10, rewardToken.address, rewarder.address)
+    await rewardToken.transfer(rewarder.address, bn(10_000))
+
+    await chef.add(10, lpToken.address, rewarder.address)
     await rewarder.add(0, 100)
 
-    await rewardToken.transfer(alice.address, bn(75))
-    await rewardToken.transfer(bob.address, bn(25))
+    await lpToken.transfer(alice.address, bn(75))
+    await lpToken.transfer(bob.address, bn(25))
 
     await setAutomineBlocks(false)
-    await rewardToken.connect(bob).approve(chef.address, bn(25))
+    await lpToken.connect(bob).approve(chef.address, bn(25))
     await chef.connect(bob).deposit(0, bn(25), bob.address)
 
-    await rewardToken.connect(alice).approve(chef.address, bn(75))
+    await lpToken.connect(alice).approve(chef.address, bn(75))
     await chef.connect(alice).deposit(0, bn(75), alice.address)
     await setAutomineBlocks(true)
     await advanceBlock()
@@ -131,5 +123,169 @@ describe("TimeBasedRewarder", function () {
 
     expect(await rewarder.pendingToken(0, alice.address)).to.equal(rewardsPerSecond.mul(100).mul(3).div(4))
     expect(await rewarder.pendingToken(0, bob.address)).to.equal(rewardsPerSecond.mul(100).div(4))
+  })
+
+  it("transfers correct amount of reward tokens for single pool", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await rewardToken.transfer(rewarder.address, bn(10_000))
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(75))
+    await lpToken.transfer(bob.address, bn(25))
+
+    await setAutomineBlocks(false)
+    await lpToken.connect(bob).approve(chef.address, bn(25))
+    await chef.connect(bob).deposit(0, bn(25), bob.address)
+
+    await lpToken.connect(alice).approve(chef.address, bn(75))
+    await chef.connect(alice).deposit(0, bn(75), alice.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+    const before = await latest()
+
+    // we advance by 100 seconds
+    await advanceToTime(before.toNumber() + 100)
+    await setAutomineBlocks(false)
+    await chef.connect(bob).harvest(0, bob.address)
+    await chef.connect(alice).harvest(0, alice.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+
+    expect(await rewardToken.balanceOf(alice.address)).to.equal(rewardsPerSecond.mul(100).mul(3).div(4))
+    expect(await rewardToken.balanceOf(bob.address)).to.equal(rewardsPerSecond.mul(100).div(4))
+
+    expect(await rewarder.pendingToken(0, alice.address)).to.equal(bn(0))
+    expect(await rewarder.pendingToken(0, bob.address)).to.equal(bn(0))
+  })
+
+  it("transfers remaining amount if reward token balance is less than amount", async () => {
+    /*
+        in case the balance of tokens on the contract is less than what the user would get, he should just get
+        the remaining amount
+     */
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await rewardToken.transfer(rewarder.address, bn(98))
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(100))
+
+    await lpToken.connect(alice).approve(chef.address, bn(100))
+    await chef.connect(alice).deposit(0, bn(100), alice.address)
+    const afterDeposit = await latest()
+    // we transferred 98 tokens, with 5 tokens / sec we should have all of them after 20 seconds
+    await advanceToTime(afterDeposit.toNumber() + 20)
+    await chef.connect(alice).harvest(0, alice.address)
+    expect(await rewardToken.balanceOf(alice.address)).to.equal(bn(98))
+  })
+
+  it("returns pending remaining amount if reward token balance is less than amount", async () => {
+    /*
+        in case the balance of tokens on the contract is less than what the user would get, we return the remaining balance as
+        pending amount
+     */
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await rewardToken.transfer(rewarder.address, bn(98))
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(100))
+
+    await lpToken.connect(alice).approve(chef.address, bn(100))
+    await chef.connect(alice).deposit(0, bn(100), alice.address)
+    const afterDeposit = await latest()
+    // we transferred 98 tokens, with 5 tokens / sec we should have all of them after 20 seconds
+    await advanceToTime(afterDeposit.toNumber() + 20)
+    await advanceBlock()
+    expect(await rewarder.pendingToken(0, alice.address)).to.equal(bn(98))
+  })
+
+  it("allows deposits when rewarder has no funds", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(100))
+
+    await lpToken.connect(alice).approve(chef.address, bn(100))
+    await expect(chef.connect(alice).deposit(0, bn(100), alice.address)).not.to.be.reverted
+  })
+
+  it("allows harvest when rewarder has no funds", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(100))
+
+    await lpToken.connect(alice).approve(chef.address, bn(100))
+    await chef.connect(alice).deposit(0, bn(100), alice.address)
+    await advanceBlock()
+    await expect(chef.connect(alice).harvest(0, alice.address)).not.to.be.reverted
+  })
+
+  it("allows withdraw when rewarder has no funds", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(100))
+
+    await lpToken.connect(alice).approve(chef.address, bn(100))
+    await chef.connect(alice).deposit(0, bn(100), alice.address)
+    await advanceBlock()
+    await expect(chef.connect(alice).withdrawAndHarvest(0, bn(100), alice.address)).not.to.be.reverted
+  })
+
+  it("only masterchef can call onBeetsReward hook", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(100))
+
+    await lpToken.connect(alice).approve(chef.address, bn(100))
+    //deposit calls onBeetsReward
+    await expect(chef.connect(alice).deposit(0, bn(100), alice.address)).not.to.be.reverted
+    await expect(rewarder.onBeetsReward(0, bob.address, bob.address, 10, bn(100))).to.be.revertedWith("Only MasterChef can call this function.")
   })
 })
