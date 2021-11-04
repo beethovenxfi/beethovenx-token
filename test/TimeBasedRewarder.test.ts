@@ -165,6 +165,56 @@ describe("TimeBasedRewarder", function () {
     expect(await rewarder.pendingToken(0, bob.address)).to.equal(bn(0))
   })
 
+  it("transfers correct amount of reward tokens for multiple pools", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const lpToken2 = await deployERC20Mock("LPToken2", "LPT2", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await rewardToken.transfer(rewarder.address, bn(10_000))
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await chef.add(10, lpToken2.address, rewarder.address)
+    await rewarder.add(1, 100)
+
+    await lpToken.transfer(alice.address, bn(50))
+    await lpToken.transfer(bob.address, bn(50))
+    await lpToken2.transfer(carol.address, bn(50))
+
+    await setAutomineBlocks(false)
+    await lpToken.connect(bob).approve(chef.address, bn(50))
+    await chef.connect(bob).deposit(0, bn(50), bob.address)
+
+    await lpToken.connect(alice).approve(chef.address, bn(50))
+    await chef.connect(alice).deposit(0, bn(50), alice.address)
+
+    await lpToken2.connect(carol).approve(chef.address, bn(50))
+    await chef.connect(carol).deposit(1, bn(50), carol.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+    const before = await latest()
+
+    // we advance by 100 seconds
+    await advanceToTime(before.toNumber() + 100)
+    await setAutomineBlocks(false)
+    await chef.connect(bob).harvest(0, bob.address)
+    await chef.connect(alice).harvest(0, alice.address)
+    await chef.connect(carol).harvest(1, carol.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+
+    expect(await rewardToken.balanceOf(alice.address)).to.equal(rewardsPerSecond.div(2).mul(100).div(2))
+    expect(await rewardToken.balanceOf(bob.address)).to.equal(rewardsPerSecond.div(2).mul(100).div(2))
+    expect(await rewardToken.balanceOf(carol.address)).to.equal(rewardsPerSecond.div(2).mul(100))
+
+    expect(await rewarder.pendingToken(0, alice.address)).to.equal(bn(0))
+    expect(await rewarder.pendingToken(0, bob.address)).to.equal(bn(0))
+  })
+
   it("transfers remaining amount if reward token balance is less than amount", async () => {
     /*
         in case the balance of tokens on the contract is less than what the user would get, he should just get
