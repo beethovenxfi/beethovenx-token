@@ -21,7 +21,7 @@ describe("BeethovenxMasterChef", function () {
   })
 
   beforeEach(async function () {
-    fidelioDuettoToken = await deployERC20Mock("FidelioDuetto", "FidelioDuettoBlp", bn(10_000))
+    fidelioDuettoToken = await deployERC20Mock("FidelioDuetto", "FidelioDuettoBPT", bn(10_000))
     orchestra = await deployContract("BeethovenxOrchestra", [fidelioDuettoToken.address])
   })
 
