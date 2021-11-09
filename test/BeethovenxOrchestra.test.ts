@@ -112,7 +112,7 @@ describe("BeethovenxMasterChef", function () {
     /*
        amount = fBeets *  totalLockedFidelioDuettos / total_fBeets;
 
-       so we left with halice first:
+       so we left with alice first:
         alice_amount = 100 * 400 / 150 = 266.666
 
        then bob:
