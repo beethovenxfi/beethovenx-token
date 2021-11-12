@@ -11,7 +11,7 @@ contract FreshBeets is ERC20("FreshBeets", "fBEETS") {
 
     IERC20 public vestingToken;
 
-    constructor(IERC20 _vestingToken) public {
+    constructor(IERC20 _vestingToken) {
         vestingToken = _vestingToken;
     }
 
