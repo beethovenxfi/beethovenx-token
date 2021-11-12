@@ -37,6 +37,9 @@ const config: HardhatUserConfig = {
   mocha: {
     timeout: 20000,
   },
+  namedAccounts: {
+    deployer: 0,
+  },
   networks: {
     localhost: {
       live: false,
@@ -51,7 +54,7 @@ const config: HardhatUserConfig = {
       saveDeployments: true,
     },
     fantom: {
-      url: "https://rpcapi.fantom.network",
+      url: "https://rpc.ftm.tools/",
       accounts,
       chainId: 250,
       live: true,
