@@ -11,11 +11,17 @@ contract BeetsBar is ERC20("FreshBeets", "fBEETS") {
 
     IERC20 public vestingToken;
 
-    event Enter(address indexed user, uint256 amount);
-    event Leave(address indexed user, uint256 amount);
+    event Enter(
+        address indexed user,
+        uint256 vestingInAmount,
+        uint256 mintedAmount
+    );
+    event Leave(
+        address indexed user,
+        uint256 vestingOutAmount,
+        uint256 burnedAmount
+    );
     event ShareRevenue(uint256 amount);
-    event MintFreshBeets(address indexed user, uint256 amount);
-    event BurnFreshBeets(address indexed user, uint256 amount);
 
     constructor(IERC20 _vestingToken) {
         vestingToken = _vestingToken;
@@ -43,8 +49,7 @@ contract BeetsBar is ERC20("FreshBeets", "fBEETS") {
                 mintAmount = shareOfFreshBeets;
             }
             _mint(msg.sender, mintAmount);
-            emit Enter(msg.sender, _amount);
-            emit MintFreshBeets(msg.sender, mintAmount);
+            emit Enter(msg.sender, _amount, mintAmount);
         }
     }
 
@@ -60,8 +65,7 @@ contract BeetsBar is ERC20("FreshBeets", "fBEETS") {
             _burn(msg.sender, _shareOfFreshBeets);
             vestingToken.transfer(msg.sender, amount);
 
-            emit Leave(msg.sender, amount);
-            emit BurnFreshBeets(msg.sender, _shareOfFreshBeets);
+            emit Leave(msg.sender, amount, _shareOfFreshBeets);
         }
     }
 
