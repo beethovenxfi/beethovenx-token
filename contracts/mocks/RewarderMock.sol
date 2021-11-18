@@ -25,13 +25,13 @@ contract RewarderMock is IRewarder {
 
     function onBeetsReward(
         uint256,
-        address user,
+        address,
         address to,
         uint256 beetsAmount,
         uint256
     ) external override onlyMCV2 {
-        uint256 pendingReward =
-            (beetsAmount * rewardMultiplier) / REWARD_TOKEN_DIVISOR;
+        uint256 pendingReward = (beetsAmount * rewardMultiplier) /
+            REWARD_TOKEN_DIVISOR;
         uint256 rewardBal = rewardToken.balanceOf(address(this));
         if (pendingReward > rewardBal) {
             rewardToken.safeTransfer(to, rewardBal);
@@ -41,8 +41,8 @@ contract RewarderMock is IRewarder {
     }
 
     function pendingTokens(
-        uint256 pid,
-        address user,
+        uint256,
+        address,
         uint256 beetsAmount
     )
         external
@@ -59,7 +59,7 @@ contract RewarderMock is IRewarder {
         return (_rewardTokens, _rewardAmounts);
     }
 
-    modifier onlyMCV2 {
+    modifier onlyMCV2() {
         require(
             msg.sender == BEETHOVEN_MASTERCHEF,
             "Only MCV2 can call this function."
