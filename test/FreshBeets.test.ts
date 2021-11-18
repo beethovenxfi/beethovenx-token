@@ -34,7 +34,11 @@ describe("FreshBeets", function () {
     await vestingToken.transfer(bob.address, enterAmount)
 
     await vestingToken.connect(bob).approve(fBeets.address, enterAmount)
-    await fBeets.connect(bob).enter(enterAmount)
+    await expect(fBeets.connect(bob).enter(enterAmount))
+      .to.emit(fBeets, "Enter")
+      .withArgs(bob.address, enterAmount)
+      .to.emit(fBeets, "MintFreshBeets")
+      .withArgs(bob.address, enterAmount)
     expect(await vestingToken.balanceOf(fBeets.address)).to.equal(enterAmount)
     expect(await fBeets.balanceOf(bob.address)).to.equal(enterAmount)
   })
@@ -47,10 +51,18 @@ describe("FreshBeets", function () {
     await vestingToken.transfer(bob.address, bobEnterAmount)
 
     await vestingToken.connect(alice).approve(fBeets.address, aliceEnterAmount)
-    await fBeets.connect(alice).enter(aliceEnterAmount)
+    await expect(fBeets.connect(alice).enter(aliceEnterAmount))
+      .to.emit(fBeets, "Enter")
+      .withArgs(alice.address, aliceEnterAmount)
+      .to.emit(fBeets, "MintFreshBeets")
+      .withArgs(alice.address, aliceEnterAmount)
 
     await vestingToken.connect(bob).approve(fBeets.address, bobEnterAmount)
-    await fBeets.connect(bob).enter(bobEnterAmount)
+    await expect(fBeets.connect(bob).enter(bobEnterAmount))
+      .to.emit(fBeets, "Enter")
+      .withArgs(bob.address, bobEnterAmount)
+      .to.emit(fBeets, "MintFreshBeets")
+      .withArgs(bob.address, bobEnterAmount)
 
     expect(await vestingToken.balanceOf(fBeets.address)).to.equal(aliceEnterAmount.add(bobEnterAmount))
     expect(await fBeets.balanceOf(alice.address)).to.equal(aliceEnterAmount)
@@ -65,16 +77,25 @@ describe("FreshBeets", function () {
     await vestingToken.transfer(bob.address, bobEnterAmount)
 
     await vestingToken.connect(alice).approve(fBeets.address, aliceEnterAmount)
-    await fBeets.connect(alice).enter(aliceEnterAmount)
+    await expect(fBeets.connect(alice).enter(aliceEnterAmount))
+      .to.emit(fBeets, "Enter")
+      .withArgs(alice.address, aliceEnterAmount)
+      .to.emit(fBeets, "MintFreshBeets")
+      .withArgs(alice.address, aliceEnterAmount)
 
     // lets double the value of fBeets
 
     const valueIncreaseAmount = bn(100)
-    await vestingToken.transfer(fBeets.address, valueIncreaseAmount)
+    await vestingToken.approve(fBeets.address, valueIncreaseAmount)
+    await expect(fBeets.shareRevenue(valueIncreaseAmount)).to.emit(fBeets, "ShareRevenue").withArgs(valueIncreaseAmount)
 
     // now bob enters, so his share is now only half of the one of alice
     await vestingToken.connect(bob).approve(fBeets.address, bobEnterAmount)
-    await fBeets.connect(bob).enter(bobEnterAmount)
+    await expect(fBeets.connect(bob).enter(bobEnterAmount))
+      .to.emit(fBeets, "Enter")
+      .withArgs(bob.address, bobEnterAmount)
+      .to.emit(fBeets, "MintFreshBeets")
+      .withArgs(bob.address, bobEnterAmount.div(2))
 
     expect(await vestingToken.balanceOf(fBeets.address)).to.equal(aliceEnterAmount.add(bobEnterAmount).add(valueIncreaseAmount))
     expect(await fBeets.balanceOf(alice.address)).to.equal(aliceEnterAmount)
@@ -89,21 +110,34 @@ describe("FreshBeets", function () {
     await vestingToken.transfer(bob.address, bobEnterAmount)
 
     await vestingToken.connect(alice).approve(fBeets.address, aliceEnterAmount)
-    await fBeets.connect(alice).enter(aliceEnterAmount)
+    const expectedAliceFreshBeetsAmount = aliceEnterAmount
+    await expect(fBeets.connect(alice).enter(aliceEnterAmount))
+      .to.emit(fBeets, "Enter")
+      .withArgs(alice.address, aliceEnterAmount)
+      .to.emit(fBeets, "MintFreshBeets")
+      .withArgs(alice.address, expectedAliceFreshBeetsAmount)
 
     // lets double the value of fBeets
 
     const firstValueIncrease = bn(100)
-    await vestingToken.transfer(fBeets.address, firstValueIncrease)
+    await vestingToken.approve(fBeets.address, firstValueIncrease)
+    await expect(fBeets.shareRevenue(firstValueIncrease)).to.emit(fBeets, "ShareRevenue").withArgs(firstValueIncrease)
 
     // now bob enters, so his share is now only half of the one of alice
     await vestingToken.connect(bob).approve(fBeets.address, bobEnterAmount)
-    await fBeets.connect(bob).enter(bobEnterAmount)
+    const expectedBobFreshBeetsAmount = bobEnterAmount.div(2)
+    await expect(fBeets.connect(bob).enter(bobEnterAmount))
+      .to.emit(fBeets, "Enter")
+      .withArgs(bob.address, bobEnterAmount)
+      .to.emit(fBeets, "MintFreshBeets")
+      .withArgs(bob.address, expectedBobFreshBeetsAmount)
 
     // lets add another 100 fBeets
 
     const secondValueIncrease = bn(100)
-    await vestingToken.transfer(fBeets.address, secondValueIncrease)
+
+    await vestingToken.approve(fBeets.address, secondValueIncrease)
+    await expect(fBeets.shareRevenue(secondValueIncrease)).to.emit(fBeets, "ShareRevenue").withArgs(secondValueIncrease)
 
     expect(await vestingToken.balanceOf(fBeets.address)).to.equal(
       aliceEnterAmount.add(bobEnterAmount).add(firstValueIncrease).add(secondValueIncrease)
@@ -122,15 +156,25 @@ describe("FreshBeets", function () {
     const fBeetsSupplyBeforeAliceLeave = await fBeets.totalSupply()
     const lockedFidelioTokensBeforeAliceLeave = await vestingToken.balanceOf(fBeets.address)
     const aliceAmount = await fBeets.balanceOf(alice.address)
-    await fBeets.connect(alice).leave(aliceAmount)
-    expect(await vestingToken.balanceOf(alice.address)).to.equal(
-      aliceAmount.mul(lockedFidelioTokensBeforeAliceLeave).div(fBeetsSupplyBeforeAliceLeave)
-    )
+    const expectedAliceLeaveLpAmount = aliceAmount.mul(lockedFidelioTokensBeforeAliceLeave).div(fBeetsSupplyBeforeAliceLeave)
+
+    await expect(fBeets.connect(alice).leave(aliceAmount))
+      .to.emit(fBeets, "Leave")
+      .withArgs(alice.address, expectedAliceLeaveLpAmount)
+      .to.emit(fBeets, "BurnFreshBeets")
+      .withArgs(alice.address, expectedAliceFreshBeetsAmount)
+
+    expect(await vestingToken.balanceOf(alice.address)).to.equal(expectedAliceLeaveLpAmount)
 
     const fBeetsSupplyBeforeBobLeave = await fBeets.totalSupply()
     const lockedFidelioTokensBeforeBobLeave = await vestingToken.balanceOf(fBeets.address)
     const bobAmount = await fBeets.balanceOf(bob.address)
-    await fBeets.connect(bob).leave(bobAmount)
-    expect(await vestingToken.balanceOf(bob.address)).to.equal(bobAmount.mul(lockedFidelioTokensBeforeBobLeave).div(fBeetsSupplyBeforeBobLeave))
+    const expectedBobLeaveLpAmount = bobAmount.mul(lockedFidelioTokensBeforeBobLeave).div(fBeetsSupplyBeforeBobLeave)
+    await expect(fBeets.connect(bob).leave(bobAmount))
+      .to.emit(fBeets, "Leave")
+      .withArgs(bob.address, expectedBobLeaveLpAmount)
+      .to.emit(fBeets, "BurnFreshBeets")
+      .withArgs(bob.address, expectedBobFreshBeetsAmount)
+    expect(await vestingToken.balanceOf(bob.address)).to.equal(expectedBobLeaveLpAmount)
   })
 })

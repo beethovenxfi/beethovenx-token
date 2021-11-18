@@ -11,11 +11,17 @@ contract FreshBeets is ERC20("FreshBeets", "fBEETS") {
 
     IERC20 public vestingToken;
 
+    event Enter(address indexed user, uint256 amount);
+    event Leave(address indexed user, uint256 amount);
+    event ShareRevenue(uint256 amount);
+    event MintFreshBeets(address indexed user, uint256 amount);
+    event BurnFreshBeets(address indexed user, uint256 amount);
+
     constructor(IERC20 _vestingToken) {
         vestingToken = _vestingToken;
     }
 
-    function enter(uint256 _amount) public {
+    function enter(uint256 _amount) external {
         if (_amount > 0) {
             uint256 totalLockedTokenSupply = vestingToken.balanceOf(
                 address(this)
@@ -24,21 +30,25 @@ contract FreshBeets is ERC20("FreshBeets", "fBEETS") {
             uint256 totalFreshBeets = totalSupply();
 
             vestingToken.transferFrom(msg.sender, address(this), _amount);
+            uint256 mintAmount;
             // If no fBeets exists, mint it 1:1 to the amount put in
             if (totalFreshBeets == 0 || totalLockedTokenSupply == 0) {
-                _mint(msg.sender, _amount);
+                mintAmount = _amount;
             }
             // Calculate and mint the amount of fBeets the blp is worth. The ratio will change overtime
             else {
                 uint256 shareOfFreshBeets = (_amount * totalFreshBeets) /
                     totalLockedTokenSupply;
 
-                _mint(msg.sender, shareOfFreshBeets);
+                mintAmount = shareOfFreshBeets;
             }
+            _mint(msg.sender, mintAmount);
+            emit Enter(msg.sender, _amount);
+            emit MintFreshBeets(msg.sender, mintAmount);
         }
     }
 
-    function leave(uint256 _shareOfFreshBeets) public {
+    function leave(uint256 _shareOfFreshBeets) external {
         if (_shareOfFreshBeets > 0) {
             uint256 totalVestedTokenSupply = vestingToken.balanceOf(
                 address(this)
@@ -49,6 +59,14 @@ contract FreshBeets is ERC20("FreshBeets", "fBEETS") {
                 totalFreshBeets;
             _burn(msg.sender, _shareOfFreshBeets);
             vestingToken.transfer(msg.sender, amount);
+
+            emit Leave(msg.sender, amount);
+            emit BurnFreshBeets(msg.sender, _shareOfFreshBeets);
         }
+    }
+
+    function shareRevenue(uint256 _amount) external {
+        vestingToken.transferFrom(msg.sender, address(this), _amount);
+        emit ShareRevenue(_amount);
     }
 }
