@@ -7,12 +7,12 @@ import "../interfaces/IRewarder.sol";
 
 contract RewarderBrokenMock is IRewarder {
     function onBeetsReward(
-        uint256 pid,
-        address user,
-        address recipient,
-        uint256 beetsAmount,
-        uint256 newLpAmount
-    ) external override {
+        uint256,
+        address,
+        address,
+        uint256,
+        uint256
+    ) external pure override {
         revert("mock failure");
     }
 
@@ -20,12 +20,7 @@ contract RewarderBrokenMock is IRewarder {
         uint256,
         address,
         uint256
-    )
-        external
-        view
-        override
-        returns (IERC20[] memory rewardTokens, uint256[] memory rewardAmounts)
-    {
+    ) external pure override returns (IERC20[] memory, uint256[] memory) {
         revert("mock failure");
     }
 }

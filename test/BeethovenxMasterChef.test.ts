@@ -1,14 +1,5 @@
 import { expect } from "chai"
-import {
-  advanceBlock,
-  advanceBlockRelativeTo,
-  advanceBlockTo,
-  bn,
-  deployChef,
-  deployContract,
-  deployERC20Mock,
-  setAutomineBlocks,
-} from "./utilities"
+import { advanceBlock, advanceBlockTo, bn, deployChef, deployContract, deployERC20Mock, setAutomineBlocks } from "./utilities"
 import { ethers } from "hardhat"
 import { BeethovenxMasterChef, BeethovenxToken, RewarderMock } from "../types"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
@@ -19,7 +10,6 @@ describe("BeethovenxMasterChef", function () {
   let owner: SignerWithAddress
   let dev: SignerWithAddress
   let treasury: SignerWithAddress
-  let marketing: SignerWithAddress
   let alice: SignerWithAddress
   let bob: SignerWithAddress
   let carol: SignerWithAddress
@@ -34,7 +24,6 @@ describe("BeethovenxMasterChef", function () {
     owner = signers[0]
     dev = signers[1]
     treasury = signers[2]
-    marketing = signers[3]
     alice = signers[4]
     bob = signers[5]
     carol = signers[6]
