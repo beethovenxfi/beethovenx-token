@@ -66,4 +66,48 @@ describe("Timelock", function () {
       .executeTransaction(beets.address, "0", "transferOwnership(address)", encodeParameters(["address"], [carol.address]), eta)
     expect(await beets.owner()).to.equal(carol.address)
   })
+
+  it("cancels queued transaction", async () => {
+    await beets.transferOwnership(timelock.address)
+    const eta = (await latest()).add(duration.days("4"))
+    await timelock
+      .connect(bob)
+      .queueTransaction(beets.address, "0", "transferOwnership(address)", encodeParameters(["address"], [carol.address]), eta)
+    await increase(duration.days("1").toNumber())
+    await timelock
+      .connect(bob)
+      .cancelTransaction(beets.address, "0", "transferOwnership(address)", encodeParameters(["address"], [carol.address]), eta)
+    await expect(
+      timelock
+        .connect(bob)
+        .executeTransaction(beets.address, "0", "transferOwnership(address)", encodeParameters(["address"], [carol.address]), eta)
+    ).to.be.revertedWith("Timelock::executeTransaction: Transaction hasn't been queued.")
+  })
+
+  it("allows changing admin directly the first time", async () => {
+    await expect(timelock.connect(bob).setPendingAdmin(alice.address)).to.emit(timelock, "NewPendingAdmin").withArgs(alice.address)
+    await timelock.connect(alice).acceptAdmin()
+    expect(await timelock.admin()).to.equal(alice.address)
+  })
+
+  it("allows changing admin through timelock after initialization", async () => {
+    const eta = (await latest()).add(duration.days("4"))
+    await timelock.connect(bob).setPendingAdmin(carol.address)
+    await timelock.connect(carol).acceptAdmin()
+
+    // second time has to come thorough timelock
+    await expect(timelock.connect(carol).setPendingAdmin(alice.address)).to.be.revertedWith(
+      "Timelock::setPendingAdmin: Call must come from Timelock."
+    )
+    await timelock
+      .connect(carol)
+      .queueTransaction(timelock.address, "0", "setPendingAdmin(address)", encodeParameters(["address"], [alice.address]), eta)
+    await increase(duration.days("4").toNumber())
+    await timelock
+      .connect(carol)
+      .executeTransaction(timelock.address, "0", "setPendingAdmin(address)", encodeParameters(["address"], [alice.address]), eta)
+
+    await timelock.connect(alice).acceptAdmin()
+    expect(await timelock.admin()).to.equal(alice.address)
+  })
 })

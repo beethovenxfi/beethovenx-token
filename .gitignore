@@ -1,7 +1,6 @@
 abi/
 artifacts/
 cache/
-coverage/
 exports/
 node_modules/
 types/

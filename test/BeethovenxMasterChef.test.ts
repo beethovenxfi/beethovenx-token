@@ -201,13 +201,16 @@ describe("BeethovenxMasterChef", function () {
     const chef = await deployChef(beets.address, treasury.address, 1000, 0)
     await beets.transferOwnership(chef.address)
 
+    const rewarderToken = await deployERC20Mock("Rewarder token", "RW", 10_000)
+    const rewarder = await deployContract<RewarderMock>("RewarderMock", [1, rewarderToken.address, chef.address])
+
     const lp = await deployERC20Mock("Lp 1", "lp1", 10_000)
 
     // we give bob some lp's and approve it so we can deposit it to the pool
     await lp.transfer(bob.address, "1000")
     await lp.connect(bob).approve(chef.address, "1000")
 
-    await chef.add("100", lp.address, ethers.constants.AddressZero)
+    await chef.add("100", lp.address, rewarder.address)
     await chef.connect(bob).deposit(0, "100", bob.address)
 
     expect(await lp.balanceOf(bob.address)).to.equal("900")

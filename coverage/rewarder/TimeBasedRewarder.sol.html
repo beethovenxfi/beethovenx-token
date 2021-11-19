@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Code coverage report for rewarder/TimeBasedRewarder.sol</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../prettify.css" />
+    <link rel="stylesheet" href="../base.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+<body>
+<div class='wrapper'>
+  <div class='pad1'>
+    <h1>
+      <a href="../index.html">all files</a> / <a href="index.html">rewarder/</a> TimeBasedRewarder.sol
+    </h1>
+    <div class='clearfix'>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">91.67% </span>
+        <span class="quiet">Statements</span>
+        <span class='fraction'>55/60</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Branches</span>
+        <span class='fraction'>22/22</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">90.91% </span>
+        <span class="quiet">Functions</span>
+        <span class='fraction'>10/11</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">91.8% </span>
+        <span class="quiet">Lines</span>
+        <span class='fraction'>56/61</span>
+      </div>
+    </div>
+  </div>
+  <div class='status-line high'></div>
+<pre><table class="coverage">
+<tr><td class="line-count quiet">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+101
+102
+103
+104
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+121
+122
+123
+124
+125
+126
+127
+128
+129
+130
+131
+132
+133
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175
+176
+177
+178
+179
+180
+181
+182
+183
+184
+185
+186
+187
+188
+189
+190
+191
+192
+193
+194
+195
+196
+197
+198
+199
+200
+201
+202
+203
+204
+205
+206
+207
+208
+209
+210
+211
+212
+213
+214
+215
+216
+217
+218
+219
+220
+221
+222
+223
+224
+225
+226
+227
+228
+229
+230
+231
+232
+233
+234
+235
+236
+237
+238
+239
+240
+241
+242
+243
+244
+245
+246
+247</td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">51×</span>
+<span class="cline-any cline-yes">51×</span>
+<span class="cline-any cline-yes">51×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-yes">6×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16×</span>
+<span class="cline-any cline-yes">15×</span>
+<span class="cline-any cline-yes">15×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15×</span>
+<span class="cline-any cline-yes">15×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7×</span>
+<span class="cline-any cline-yes">7×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">23×</span>
+<span class="cline-any cline-yes">23×</span>
+<span class="cline-any cline-yes">16×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16×</span>
+<span class="cline-any cline-yes">6×</span>
+<span class="cline-any cline-yes">6×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16×</span>
+<span class="cline-any cline-yes">16×</span>
+<span class="cline-any cline-yes">16×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// SPDX-License-Identifier: MIT
+&nbsp;
+pragma solidity 0.8.7;
+&nbsp;
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "../interfaces/IRewarder.sol";
+import "../token/BeethovenxMasterChef.sol";
+&nbsp;
+contract TimeBasedRewarder is IRewarder, Ownable {
+    using SafeERC20 for IERC20;
+&nbsp;
+    IERC20 public immutable rewardToken;
+&nbsp;
+    struct UserInfo {
+        uint256 amount;
+        uint256 rewardDebt;
+    }
+&nbsp;
+    struct PoolInfo {
+        uint256 accRewardTokenPerShare;
+        uint256 lastRewardTime;
+        uint256 allocPoint;
+    }
+&nbsp;
+    /// @notice Info of each pool.
+    mapping(uint256 =&gt; PoolInfo) public poolInfo;
+&nbsp;
+    uint256[] public masterchefPoolIds;
+&nbsp;
+    /// @notice Info of each user that stakes LP tokens.
+    mapping(uint256 =&gt; mapping(address =&gt; UserInfo)) public userInfo;
+    /// @dev Total allocation points. Must be the sum of all allocation points in all pools.
+    uint256 totalAllocPoint;
+&nbsp;
+    uint256 public rewardPerSecond;
+    uint256 private constant ACC_TOKEN_PRECISION = 1e12;
+&nbsp;
+    address private immutable MASTERCHEF;
+&nbsp;
+    event LogOnReward(
+        address indexed user,
+        uint256 indexed pid,
+        uint256 amount,
+        address indexed to
+    );
+    event LogPoolAddition(uint256 indexed pid, uint256 allocPoint);
+    event LogSetPool(uint256 indexed pid, uint256 allocPoint);
+    event LogUpdatePool(
+        uint256 indexed pid,
+        uint256 lastRewardTime,
+        uint256 lpSupply,
+        uint256 accRewardTokenPerShare
+    );
+    event LogRewardPerSecond(uint256 rewardPerSecond);
+    event LogInit();
+&nbsp;
+    constructor(
+        IERC20 _rewardToken,
+        uint256 _rewardPerSecond,
+        address _MASTERCHEF
+    ) {
+        rewardToken = _rewardToken;
+        rewardPerSecond = _rewardPerSecond;
+        MASTERCHEF = _MASTERCHEF;
+    }
+&nbsp;
+    function onBeetsReward(
+        uint256 pid,
+        address userAddress,
+        address recipient,
+        uint256,
+        uint256 newLpAmount
+    ) external override onlyMasterChef {
+        PoolInfo memory pool = updatePool(pid);
+        UserInfo storage userPoolInfo = userInfo[pid][userAddress];
+        uint256 pending;
+        if (userPoolInfo.amount &gt; 0) {
+            pending =
+                ((userPoolInfo.amount * pool.accRewardTokenPerShare) /
+                    ACC_TOKEN_PRECISION) -
+                userPoolInfo.rewardDebt;
+            if (pending &gt; rewardToken.balanceOf(address(this))) {
+                pending = rewardToken.balanceOf(address(this));
+            }
+        }
+        userPoolInfo.amount = newLpAmount;
+        userPoolInfo.rewardDebt =
+            (newLpAmount * pool.accRewardTokenPerShare) /
+            ACC_TOKEN_PRECISION;
+&nbsp;
+        if (pending &gt; 0) {
+            rewardToken.safeTransfer(recipient, pending);
+        }
+&nbsp;
+        emit LogOnReward(userAddress, pid, pending, recipient);
+    }
+&nbsp;
+<span class="fstat-no" title="function not covered" >    function pendingTokens(</span>
+        uint256 pid,
+        address user,
+        uint256
+    )
+        external
+        view
+        override
+        returns (IERC20[] memory rewardTokens, uint256[] memory rewardAmounts)
+    {
+<span class="cstat-no" title="statement not covered" >        IERC20[] memory _rewardTokens = new IERC20[](1);</span>
+<span class="cstat-no" title="statement not covered" >        _rewardTokens[0] = (rewardToken)</span>;
+<span class="cstat-no" title="statement not covered" >        uint256[] memory _rewardAmounts = new uint256[](1);</span>
+<span class="cstat-no" title="statement not covered" >        _rewardAmounts[0] = pendingToken(pid, user)</span>;
+<span class="cstat-no" title="statement not covered" >        return (_rewardTokens, _rewardAmounts);</span>
+    }
+&nbsp;
+    /// @notice Sets the rewards per second to be distributed. Can only be called by the owner.
+    /// @param _rewardPerSecond The amount of token rewards to be distributed per second.
+    function setRewardPerSecond(uint256 _rewardPerSecond) public onlyOwner {
+        rewardPerSecond = _rewardPerSecond;
+        emit LogRewardPerSecond(_rewardPerSecond);
+    }
+&nbsp;
+    modifier onlyMasterChef() {
+        require(
+            msg.sender == MASTERCHEF,
+            "Only MasterChef can call this function."
+        );
+        _;
+    }
+&nbsp;
+    /// @notice Returns the number of rewarded pools.
+    function poolLength() public view returns (uint256 pools) {
+        pools = masterchefPoolIds.length;
+    }
+&nbsp;
+    /// @notice Add a new LP to the pool. Can only be called by the owner.
+    /// @param allocPoint AP of the new pool.
+    /// @param pid Pid on MasterChef
+    function add(uint256 pid, uint256 allocPoint) public onlyOwner {
+        require(poolInfo[pid].lastRewardTime == 0, "Pool already exists");
+        uint256 lastRewardTime = block.timestamp;
+        totalAllocPoint = totalAllocPoint + allocPoint;
+&nbsp;
+        poolInfo[pid] = PoolInfo({
+            allocPoint: allocPoint,
+            lastRewardTime: lastRewardTime,
+            accRewardTokenPerShare: 0
+        });
+        masterchefPoolIds.push(pid);
+        emit LogPoolAddition(pid, allocPoint);
+    }
+&nbsp;
+    /// @notice Update the given pool's reward token allocation point and `IRewarder` contract. Can only be called by the owner.
+    /// @param pid The index of the MasterChef pool. See `poolInfo`.
+    /// @param allocPoint New AP of the pool.
+    function set(uint256 pid, uint256 allocPoint) public onlyOwner {
+        require(poolInfo[pid].lastRewardTime != 0, "Pool does not exist");
+        totalAllocPoint =
+            totalAllocPoint -
+            poolInfo[pid].allocPoint +
+            allocPoint;
+&nbsp;
+        poolInfo[pid].allocPoint = allocPoint;
+        emit LogSetPool(pid, allocPoint);
+    }
+&nbsp;
+    /// @notice View function to see pending Token
+    /// @param _pid The index of the MasterChef pool. See `poolInfo`.
+    /// @param _user Address of user.
+    /// @return pending rewards for a given user.
+    function pendingToken(uint256 _pid, address _user)
+        public
+        view
+        returns (uint256 pending)
+    {
+        PoolInfo memory pool = poolInfo[_pid];
+        if (pool.lastRewardTime == 0) {
+            pending = 0;
+        } else {
+            UserInfo storage user = userInfo[_pid][_user];
+            uint256 accRewardTokenPerShare = pool.accRewardTokenPerShare;
+&nbsp;
+            uint256 totalLpSupply = BeethovenxMasterChef(MASTERCHEF)
+                .lpTokens(_pid)
+                .balanceOf(MASTERCHEF);
+&nbsp;
+            if (block.timestamp &gt; pool.lastRewardTime &amp;&amp; totalLpSupply != 0) {
+                uint256 timeSinceLastReward = block.timestamp -
+                    pool.lastRewardTime;
+&nbsp;
+                uint256 rewards = (timeSinceLastReward *
+                    rewardPerSecond *
+                    pool.allocPoint) / totalAllocPoint;
+&nbsp;
+                accRewardTokenPerShare =
+                    accRewardTokenPerShare +
+                    ((rewards * ACC_TOKEN_PRECISION) / totalLpSupply);
+            }
+            pending =
+                ((user.amount * accRewardTokenPerShare) / ACC_TOKEN_PRECISION) -
+                user.rewardDebt;
+            if (pending &gt; rewardToken.balanceOf(address(this))) {
+                pending = rewardToken.balanceOf(address(this));
+            }
+        }
+    }
+&nbsp;
+    /// @notice Update reward variables for all pools. Be careful of gas spending!
+    /// @param pids Pool IDs of all to be updated. Make sure to update all active pools.
+    function massUpdatePools(uint256[] calldata pids) external {
+        uint256 len = pids.length;
+        for (uint256 i = 0; i &lt; len; ++i) {
+            updatePool(pids[i]);
+        }
+    }
+&nbsp;
+    /// @notice Update reward variables of the given pool.
+    /// @param pid The index of the pool. See `poolInfo`.
+    /// @return pool Returns the pool that was updated.
+    function updatePool(uint256 pid) public returns (PoolInfo memory pool) {
+        pool = poolInfo[pid];
+        if (pool.lastRewardTime != 0 &amp;&amp; block.timestamp &gt; pool.lastRewardTime) {
+            uint256 totalLpSupply = BeethovenxMasterChef(MASTERCHEF)
+                .lpTokens(pid)
+                .balanceOf(MASTERCHEF);
+&nbsp;
+            if (totalLpSupply &gt; 0) {
+                uint256 time = block.timestamp - pool.lastRewardTime;
+                uint256 tokenReward = (time *
+                    rewardPerSecond *
+                    pool.allocPoint) / totalAllocPoint;
+                pool.accRewardTokenPerShare =
+                    pool.accRewardTokenPerShare +
+                    ((tokenReward * ACC_TOKEN_PRECISION) / totalLpSupply);
+            }
+            pool.lastRewardTime = block.timestamp;
+            poolInfo[pid] = pool;
+            emit LogUpdatePool(
+                pid,
+                pool.lastRewardTime,
+                totalLpSupply,
+                pool.accRewardTokenPerShare
+            );
+        }
+    }
+}
+&nbsp;</pre></td></tr>
+</table></pre>
+<div class='push'></div><!-- for sticky footer -->
+</div><!-- /wrapper -->
+<div class='footer quiet pad2 space-top1 center small'>
+  Code coverage
+  generated by <a href="http://istanbul-js.org/" target="_blank">istanbul</a> at Fri Nov 19 2021 13:31:28 GMT+0100 (Central European Standard Time)
+</div>
+</div>
+<script src="../prettify.js"></script>
+<script>
+window.onload = function () {
+        if (typeof prettyPrint === 'function') {
+            prettyPrint();
+        }
+};
+</script>
+<script src="../sorter.js"></script>
+</body>
+</html>
