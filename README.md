@@ -1,9 +1,14 @@
-# BeethovenX token contracts
-## Token
+# BeethovenX token
+
+## Contracts
+
+### BeethovenxToken
 The token uses OpenZeppelins ERC20 base contract and only adds a maximum supply of 250mio BEETS to it.
 
-## MasterChef
-The master chef is based on SUSHI's version with some adjustments:
+### BeethovenxMasterChef
+
+
+The contract is based on SUSHI's version with some adjustments:
  - Upgrade to pragma 0.8.7
  - therefore remove usage of SafeMath (built in overflow check for solidity > 8)
  - Merge sushi's master chef V1 & V2 (no usage of dummy pool)
@@ -12,6 +17,13 @@ The master chef is based on SUSHI's version with some adjustments:
  - treasury percentage is subtracted from emissions instead of added on top
  - update of emission rate with upper limit of 6 BEETS/block
  - more require checks in general
+
+## Tests
+Tests are located under the `test/` directory. 
+
+### Scripts:
+ - `yarn test`  - Runs all tests
+ - `yarn test:coverage` - Runs all tests with coverage report
 
 
 
