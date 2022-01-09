@@ -11,15 +11,44 @@ import "@openzeppelin/contracts/math/Math.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-// lock.unlocktime - lockDuration = locked epoch start timestamp = epoch ID
-// maybe do storage optimization
 
-// fBeets locked in this contract will be entitled to voting rights for the Convex Finance platform
-// Based on CVX Staking contract for https://www.convexfinance.com - https://github.com/convex-eth/platform/blob/main/contracts/contracts/CvxLocker.sol
+/*
+    Based on CVX Staking contract for https://www.convexfinance.com - https://github.com/convex-eth/platform/blob/main/contracts/contracts/CvxLocker.sol
+
+     *** Locking mechanism ***
+
+    This locking mechanism is based on epochs with a duration of 1 week. when locking our tokens,
+    the unlock time for this lock period is set to the start of the current running epoch + 17 weeks.
+    The locked tokens of the current epoch are not eligible for voting. Therefore we need to wait for the next
+    epoch until we can vote.
+    All tokens locked within the same epoch share the same lock and therefore the same unlock time.
+
+
+    *** Rewards ***
+    todo:...
+*/
+
+
 contract FBeetsLocker is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
     /* ========== STATE VARIABLES ========== */
+
+    struct Epoch {
+        uint256 supply; //epoch locked supply
+        uint256 startTime; //epoch start date
+    }
+
+    IERC20 public constant lockingToken =
+        IERC20(0xfcef8a994209d6916EB2C86cDD2AFD60Aa6F54b1); //fBeets
+
+    //rewards
+    struct EarnedData {
+        address token;
+        uint256 amount;
+    }
+
+    address[] public rewardTokens;
 
     struct Reward {
         uint256 periodFinish;
@@ -27,30 +56,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         uint256 lastUpdateTime;
         uint256 rewardPerTokenStored;
     }
-    struct Balances {
-        uint256 lockedAmount;
-        // user locks until this index have been unlocked
-        uint256 nextUnlockIndex;
-    }
-    struct LockedBalance {
-        uint256 locked;
-        uint256 unlockTime;
-    }
-    struct EarnedData {
-        address token;
-        uint256 amount;
-    }
-    struct Epoch {
-        uint256 supply; //epoch locked supply
-        uint256 startTime; //epoch start date
-    }
 
-    //token constants
-    IERC20 public constant stakingToken =
-        IERC20(0xfcef8a994209d6916EB2C86cDD2AFD60Aa6F54b1); //fBeets
-
-    //rewards
-    address[] public rewardTokens;
     mapping(address => Reward) public rewardData;
 
     uint256 public constant epochDuration = 86400 * 7;
@@ -72,8 +78,27 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     uint256 public totalLockedSupply;
     Epoch[] public epochs;
 
-    //mappings for balance data
+    /*
+        We keep the total locked amount and an index to the next unprocessed lock per user.
+        All locks previous to this index have been either withdrawn or relocked and can be ignored.
+    */
+
+    struct Balances {
+        uint256 lockedAmount;
+        uint256 nextUnlockIndex;
+    }
+
     mapping(address => Balances) public balances;
+
+    /*
+        We keep the amount locked and the unlock time (start epoch + lock duration)
+        for each user
+    */
+    struct LockedBalance {
+        uint256 locked;
+        uint256 unlockTime;
+    }
+
     mapping(address => LockedBalance[]) public userLocks;
 
     //management
@@ -95,9 +120,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         _symbol = "vfBeets";
         _decimals = 18;
 
-        uint256 currentEpoch = (block.timestamp / epochDuration) *
-            epochDuration;
-        epochs.push(Epoch({supply: 0, date: uint32(currentEpoch)}));
+        epochs.push(Epoch({supply: 0, startTime: _currentEpoch()}));
     }
 
     function decimals() public view returns (uint8) {
@@ -120,7 +143,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         onlyOwner
     {
         require(rewardData[_rewardsToken].lastUpdateTime == 0);
-        require(_rewardsToken != address(stakingToken));
+        require(_rewardsToken != address(lockingToken));
         rewardTokens.push(_rewardsToken);
         rewardData[_rewardsToken].lastUpdateTime = uint40(block.timestamp);
         rewardData[_rewardsToken].periodFinish = uint40(block.timestamp);
@@ -444,7 +467,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         uint256 _spendRatio
     ) external nonReentrant updateReward(_account) {
         //pull tokens
-        stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
+        lockingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         //lock
         _lock(_account, _amount, _spendRatio);
@@ -467,7 +490,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
         //add user lock records or add to current
         uint256 currentEpoch = _currentEpoch();
-        uint256 unlockTime = currentEpoch + lockDuration; // lock duration = 16WEEKS
+        uint256 unlockTime = currentEpoch + lockDuration; // lock duration = 16 weeks + current week = 17 weeks
 
         uint256 idx = userLocks[_account].length;
         // if its the first lock or the last lock has shorter unlock time than this lock
@@ -575,7 +598,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             //reduce return amount by the kick reward
             unlockedAmount -= reward;
 
-            stakingToken.safeTransfer(_account, reward);
+            lockingToken.safeTransfer(_account, reward);
 
             emit KickReward(_rewardAddress, _account, reward);
         }
@@ -585,7 +608,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             _lock(_withdrawTo, unlockedAmount);
         } else {
             // transfer unlocked amount - kick reward (if present)
-            stakingToken.safeTransfer(_account, unlockedAmount);
+            lockingToken.safeTransfer(_account, unlockedAmount);
         }
     }
 
@@ -681,7 +704,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         onlyOwner
     {
         require(
-            _tokenAddress != address(stakingToken),
+            _tokenAddress != address(lockingToken),
             "Cannot withdraw staking token"
         );
         require(
@@ -701,8 +724,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             for (uint256 i = 0; i < rewardTokens.length; i++) {
                 address token = rewardTokens[i];
                 // todo: why ? just to cast to unit208 ?
-//                rewardData[token].rewardPerTokenStored = _rewardPerToken(token)
-//                    .to208();
+                //                rewardData[token].rewardPerTokenStored = _rewardPerToken(token)
+                //                    .to208();
                 rewardData[token].lastUpdateTime = _lastTimeRewardApplicable(
                     rewardData[token].periodFinish
                 );
