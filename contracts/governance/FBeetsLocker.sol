@@ -39,8 +39,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         uint256 startTime; //epoch start date
     }
 
-    IERC20 public constant lockingToken =
-        IERC20(0xfcef8a994209d6916EB2C86cDD2AFD60Aa6F54b1); //fBeets
+    IERC20 public immutable lockingToken;
+
 
     //rewards
     struct EarnedData {
@@ -115,10 +115,11 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     /* ========== CONSTRUCTOR ========== */
 
-    constructor() public Ownable() {
+    constructor(IERC20 _lockingToken) public Ownable() {
         _name = "Vote Locked fBeets Token";
         _symbol = "vfBeets";
         _decimals = 18;
+        lockingToken = _lockingToken;
 
         epochs.push(Epoch({supply: 0, startTime: _currentEpoch()}));
     }
