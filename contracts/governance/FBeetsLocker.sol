@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.7;
 
-import "./interfaces/MathUtil.sol";
-import "./interfaces/IStakingProxy.sol";
-import "./interfaces/IRewardStaking.sol";
-import "./interfaces/BoringMath.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts/math/Math.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /*
     Based on CVX Staking contract for https://www.convexfinance.com - https://github.com/convex-eth/platform/blob/main/contracts/contracts/CvxLocker.sol
@@ -28,7 +22,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
     todo:...
 */
 
-
 contract FBeetsLocker is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
@@ -40,7 +33,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     }
 
     IERC20 public immutable lockingToken;
-
 
     //rewards
     struct EarnedData {
@@ -115,7 +107,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     /* ========== CONSTRUCTOR ========== */
 
-    constructor(IERC20 _lockingToken) public Ownable() {
+    constructor(IERC20 _lockingToken) {
         _name = "Vote Locked fBeets Token";
         _symbol = "vfBeets";
         _decimals = 18;
@@ -359,7 +351,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     {
         uint256 epochStart = epochs[_epochIndex].startTime;
 
-        uint256 cutoffEpoch = epochStart.sub(lockDuration);
+        uint256 cutoffEpoch = epochStart - lockDuration;
         uint256 currentEpoch = _currentEpoch();
 
         //do not include current epoch's supply
@@ -456,22 +448,22 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             while (epochs[epochs.length - 1].startTime != currentEpoch) {
                 uint256 nextEpochDate = epochs[epochs.length - 1].startTime +
                     epochDuration;
-                epochs.push(Epoch({supply: 0, date: nextEpochDate}));
+                epochs.push(Epoch({supply: 0, startTime: nextEpochDate}));
             }
         }
     }
 
     // Locked tokens cannot be withdrawn for lockDuration and are eligible to receive stakingReward rewards
-    function lock(
-        address _account,
-        uint256 _amount,
-        uint256 _spendRatio
-    ) external nonReentrant updateReward(_account) {
+    function lock(address _account, uint256 _amount)
+        external
+        nonReentrant
+        updateReward(_account)
+    {
         //pull tokens
         lockingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         //lock
-        _lock(_account, _amount, _spendRatio);
+        _lock(_account, _amount);
     }
 
     //lock tokens
@@ -490,8 +482,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         totalLockedSupply += _amount;
 
         //add user lock records or add to current
-        uint256 currentEpoch = _currentEpoch();
-        uint256 unlockTime = currentEpoch + lockDuration; // lock duration = 16 weeks + current week = 17 weeks
+        uint256 currentEpochStartTime = _currentEpoch();
+        uint256 unlockTime = currentEpochStartTime + lockDuration; // lock duration = 16 weeks + current week = 17 weeks
 
         uint256 idx = userLocks[_account].length;
         // if its the first lock or the last lock has shorter unlock time than this lock
@@ -521,7 +513,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     ) internal updateReward(_account) {
         LockedBalance[] storage locks = userLocks[_account];
         Balances storage userBalance = balances[_account];
-        uint112 unlockedAmount;
+        uint256 unlockedAmount;
         uint256 totalLocks = locks.length;
         uint256 reward = 0;
 
@@ -546,7 +538,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
                 uint256 overdueEpochCount = (currentEpoch -
                     locks[totalLocks - 1].unlockTime) / epochDuration;
 
-                uint256 rewardRate = MathUtil.min(
+                uint256 rewardRate = Math.min(
                     kickRewardPerEpoch * (overdueEpochCount + 1),
                     denominator
                 );
@@ -557,7 +549,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             }
         } else {
             // we start on nextUnlockIndex since everything before that has already been processed
-            uint32 nextUnlockIndex = userBalance.nextUnlockIndex;
+            uint256 nextUnlockIndex = userBalance.nextUnlockIndex;
             for (uint256 i = nextUnlockIndex; i < totalLocks; i++) {
                 //unlock time must be less or equal to time
                 if (locks[i].unlockTime > block.timestamp - _checkDelay) break;
@@ -574,7 +566,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
                     uint256 overdueEpochCount = (currentEpoch -
                         locks[i].unlockTime) / epochDuration;
 
-                    uint256 rewardRate = MathUtil.min(
+                    uint256 rewardRate = Math.min(
                         kickRewardPerEpoch * (overdueEpochCount + 1),
                         denominator
                     );
@@ -633,7 +625,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             false,
             _account,
             msg.sender,
-            epochDuration.mul(kickRewardEpochDelay)
+            epochDuration * kickRewardEpochDelay
         );
     }
 
@@ -655,28 +647,23 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         }
     }
 
-    // claim all pending rewards
-    function getReward(address _account) external {
-        getReward(_account, false);
-    }
-
     /* ========== RESTRICTED FUNCTIONS ========== */
 
     // todo: not quite clear ?
     function _notifyReward(address _rewardsToken, uint256 _reward) internal {
-        Reward storage rewardData = rewardData[_rewardsToken];
+        Reward storage tokenRewardData = rewardData[_rewardsToken];
 
-        if (block.timestamp >= rewardData.periodFinish) {
-            rewardData.rewardRate = _reward / epochDuration;
+        if (block.timestamp >= tokenRewardData.periodFinish) {
+            tokenRewardData.rewardRate = _reward / epochDuration;
         } else {
-            uint256 remaining = rewardData.periodFinish - block.timestamp;
+            uint256 remaining = tokenRewardData.periodFinish - block.timestamp;
 
-            uint256 leftover = remaining * rewardData.rewardRate;
-            rewardData.rewardRate = (_reward + leftover) / epochDuration;
+            uint256 leftover = remaining * tokenRewardData.rewardRate;
+            tokenRewardData.rewardRate = (_reward + leftover) / epochDuration;
         }
 
-        rewardData.lastUpdateTime = block.timestamp;
-        rewardData.periodFinish = block.timestamp + epochDuration;
+        tokenRewardData.lastUpdateTime = block.timestamp;
+        tokenRewardData.periodFinish = block.timestamp + epochDuration;
     }
 
     function notifyRewardAmount(address _rewardsToken, uint256 _reward)
