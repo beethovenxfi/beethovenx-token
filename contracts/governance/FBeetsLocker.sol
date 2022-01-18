@@ -272,7 +272,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             if (locks[i].unlockTime <= block.timestamp) {
                 amount = amount - locks[i].locked;
             } else {
-                //stop now as no futher checks are needed
+                //stop now as no further checks are needed
                 break;
             }
         }
@@ -301,24 +301,24 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         //get timestamp of first non-inclusive epoch
         uint256 cutoffEpoch = epochStartTime - lockDuration;
 
-        //current epoch is not counted
-        uint256 currentEpoch = _currentEpoch();
-
-        //need to add up since the range could be in the middle somewhere
         //traverse inversely to make more current queries more gas efficient
-        for (uint256 i = locks.length - 1; i + 1 != 0; i--) {
-            uint256 lockEpoch = locks[i].unlockTime - lockDuration;
-            //lock epoch must be less or equal to the epoch we're basing from.
-            //also not include the current epoch & bigger than the cutoff epoch
-            if (lockEpoch <= epochStartTime && lockEpoch < currentEpoch) {
+        uint256 currentLockIndex = locks.length;
+        do {
+            currentLockIndex--;
+
+            uint256 lockEpoch = locks[currentLockIndex].unlockTime -
+                lockDuration;
+•
+            if (lockEpoch < epochStartTime) {
                 if (lockEpoch > cutoffEpoch) {
-                    amount = amount + locks[i].locked;
+                    amount += locks[currentLockIndex].locked;
                 } else {
                     //stop now as no further checks matter
                     break;
                 }
             }
-        }
+        } while (currentLockIndex > 0);
+
         return amount;
     }
 
