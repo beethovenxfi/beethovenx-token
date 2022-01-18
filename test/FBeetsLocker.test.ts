@@ -460,7 +460,7 @@ describe("fBeets locking contract", function () {
     expect(await locker.balanceAtEpochOf(16, bob.address)).to.equal(firstLockAmount.add(secondLockAmount))
   })
 
-  it("", async () => {
+  it("exposes total locked supply", async () => {
     throw new Error("Not implemented")
   })
 

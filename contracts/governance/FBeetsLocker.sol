@@ -308,7 +308,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
             uint256 lockEpoch = locks[currentLockIndex].unlockTime -
                 lockDuration;
-•
+
             if (lockEpoch < epochStartTime) {
                 if (lockEpoch > cutoffEpoch) {
                     amount += locks[currentLockIndex].locked;
@@ -334,13 +334,14 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         }
 
         //traverse inversely to make more current queries more gas efficient
-        for (uint256 i = epochIndex - 1; i + 1 != 0; i--) {
+        do {
+            epochIndex--;
             Epoch storage epoch = epochs[i];
-            if (uint256(epoch.startTime) <= cutoffEpoch) {
+            if (epoch.startTime <= cutoffEpoch) {
                 break;
             }
             supply += epoch.supply;
-        }
+        } while (epochIndex > 0);
 
         return supply;
     }
