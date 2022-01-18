@@ -9,6 +9,12 @@ export async function advanceBlock() {
   return ethers.provider.send("evm_mine", [])
 }
 
+export async function advanceBlocks(amount: number) {
+  for (let i = 0; i < amount; i++) {
+    await advanceBlock()
+  }
+}
+
 export async function advanceBlockTo(blockNumber: string) {
   for (let i = await ethers.provider.getBlockNumber(); i < blockNumber; i++) {
     await advanceBlock()

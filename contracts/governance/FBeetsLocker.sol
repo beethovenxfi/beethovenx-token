@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "hardhat/console.sol";
 
 /*
     Based on CVX Staking contract for https://www.convexfinance.com - https://github.com/convex-eth/platform/blob/main/contracts/contracts/CvxLocker.sol
@@ -154,14 +155,14 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     }
 
     //set kick incentive
-    function setKickIncentive(uint256 _rate, uint256 _delay)
-        external
-        onlyOwner
-    {
-        require(_rate <= 500, "over max rate"); //max 5% per epoch
-        require(_delay >= 2, "min delay"); //minimum 2 epochs of grace
-        kickRewardPerEpoch = _rate;
-        kickRewardEpochDelay = _delay;
+    function setKickIncentive(
+        uint256 _kickRewardPerEpoch,
+        uint256 _kickRewardEpochDelay
+    ) external onlyOwner {
+        require(_kickRewardPerEpoch <= 500, "over max rate of 5% per epoch");
+        require(_kickRewardEpochDelay >= 2, "min delay of 2 epochs required");
+        kickRewardPerEpoch = _kickRewardPerEpoch;
+        kickRewardEpochDelay = _kickRewardEpochDelay;
     }
 
     //shutdown the contract. release all locks
@@ -252,7 +253,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     // an epoch is always the timestamp on the start of an epoch
     function _currentEpoch() internal view returns (uint256) {
-        return (block.timestamp / epochDuration) * epochDuration;
+        uint256 val = (block.timestamp / epochDuration);
+        return val * epochDuration;
     }
 
     //balance of an account which only includes properly locked tokens as of the most recent eligible epoch
@@ -468,8 +470,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     //lock tokens
     function _lock(address _account, uint256 _amount) internal {
-        require(_amount > 0, "Cannot stake 0");
-        require(!isShutdown, "shutdown");
+        require(_amount > 0, "Cannot lock 0 tokens");
+        require(!isShutdown, "Contract is in shutdown");
 
         Balances storage userBalance = balances[_account];
 
@@ -500,7 +502,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         Epoch storage currentEpoch = epochs[epochs.length - 1];
         currentEpoch.supply += _amount;
 
-        emit Staked(_account, _amount);
+        emit Locked(_account, _amount);
     }
 
     // Withdraw all currently locked tokens where the unlock time has passed
@@ -517,6 +519,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         uint256 totalLocks = locks.length;
         uint256 reward = 0;
 
+        require(totalLocks > 0, "Account has no locks");
         //if time is beyond last lock, can just bundle everything together
         if (
             isShutdown ||
@@ -578,7 +581,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             //update next unlock index
             userBalance.nextUnlockIndex = nextUnlockIndex;
         }
-        require(unlockedAmount > 0, "no exp locks");
+        require(unlockedAmount > 0, "No expired locks present");
 
         //update user balances and total supplies
         userBalance.lockedAmount = userBalance.lockedAmount - unlockedAmount;
@@ -601,7 +604,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             _lock(_withdrawTo, unlockedAmount);
         } else {
             // transfer unlocked amount - kick reward (if present)
-            lockingToken.safeTransfer(_account, unlockedAmount);
+            lockingToken.safeTransfer(_withdrawTo, unlockedAmount);
         }
     }
 
@@ -611,11 +614,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         nonReentrant
     {
         _processExpiredLocks(msg.sender, _relock, _withdrawTo, msg.sender, 0);
-    }
-
-    // Withdraw/relock all currently locked tokens where the unlock time has passed
-    function processExpiredLocks(bool _relock) external nonReentrant {
-        _processExpiredLocks(msg.sender, _relock, msg.sender, msg.sender, 0);
     }
 
     function kickExpiredLocks(address _account) external nonReentrant {
@@ -733,7 +731,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     /* ========== EVENTS ========== */
     event RewardAdded(address indexed _token, uint256 _reward);
-    event Staked(address indexed _user, uint256 _lockedAmount);
+    event Locked(address indexed _user, uint256 _lockedAmount);
     event Withdrawn(address indexed _user, uint256 _amount, bool _relocked);
     event KickReward(
         address indexed _user,
