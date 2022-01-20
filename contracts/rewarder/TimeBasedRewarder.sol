@@ -36,7 +36,7 @@ contract TimeBasedRewarder is IRewarder, Ownable {
     uint256 public rewardPerSecond;
     uint256 private constant ACC_TOKEN_PRECISION = 1e12;
 
-    address private immutable MASTERCHEF;
+    address public immutable MASTERCHEF;
 
     event LogOnReward(
         address indexed user,
@@ -242,5 +242,18 @@ contract TimeBasedRewarder is IRewarder, Ownable {
                 pool.accRewardTokenPerShare
             );
         }
+    }
+
+    /// @notice Emergency withdraw total balance of this token
+    /// @param token The token to withdraw
+    /// @param withdrawTo The address to withdraw to
+    function emergencyWithdraw(address token, address withdrawTo)
+        external
+        onlyOwner
+    {
+        IERC20(token).transfer(
+            withdrawTo,
+            IERC20(token).balanceOf(address(this))
+        );
     }
 }

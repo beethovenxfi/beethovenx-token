@@ -373,4 +373,29 @@ describe("TimeBasedRewarder", function () {
     await expect(chef.connect(alice).deposit(0, bn(100), alice.address)).not.to.be.reverted
     await expect(rewarder.onBeetsReward(0, bob.address, bob.address, 10, bn(100))).to.be.revertedWith("Only MasterChef can call this function.")
   })
+
+  it("allows owner emergency withdraw", async () => {
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await rewardToken.transfer(rewarder.address, bn(10_000))
+
+    await rewarder.emergencyWithdraw(rewardToken.address, bob.address)
+    expect(await rewardToken.balanceOf(bob.address)).to.equal(bn(10_000))
+  })
+
+  it("rejects if anyone else than owner calls emergency withdraw", async () => {
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder: TimeBasedRewarder = await deployContract("TimeBasedRewarder", [rewardToken.address, rewardsPerSecond, chef.address])
+
+    await rewardToken.transfer(rewarder.address, bn(10_000))
+
+    await expect(rewarder.connect(bob).emergencyWithdraw(rewardToken.address, bob.address)).to.be.revertedWith(
+      "Ownable: caller is not the owner"
+    )
+  })
 })
