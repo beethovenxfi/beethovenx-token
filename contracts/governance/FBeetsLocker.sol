@@ -303,6 +303,10 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
         //traverse inversely to make more current queries more gas efficient
         uint256 currentLockIndex = locks.length;
+
+        if (currentLockIndex == 0) {
+            return 0;
+        }
         do {
             currentLockIndex--;
 
@@ -332,11 +336,14 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         if (epochs[epochIndex - 1].startTime == currentEpoch) {
             epochIndex--;
         }
+        if (epochIndex == 0) {
+            return 0;
+        }
 
         //traverse inversely to make more current queries more gas efficient
         do {
             epochIndex--;
-            Epoch storage epoch = epochs[i];
+            Epoch storage epoch = epochs[epochIndex];
             if (epoch.startTime <= cutoffEpoch) {
                 break;
             }
@@ -352,24 +359,32 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         view
         returns (uint256 supply)
     {
+        // if its the first epoch, no locks can be active
+        if (_epochIndex == 0) {
+            return 0;
+        }
         uint256 epochStart = epochs[_epochIndex].startTime;
 
         uint256 cutoffEpoch = epochStart - lockDuration;
-        uint256 currentEpoch = _currentEpoch();
+        //        uint256 currentEpoch = _currentEpoch();
+        //
+        //        //do not include current epoch's supply
+        //        if (epochs[_epochIndex].startTime == currentEpoch) {
+        //            _epochIndex--;
+        //        }
 
-        //do not include current epoch's supply
-        if (epochs[_epochIndex].startTime == currentEpoch) {
-            _epochIndex--;
-        }
+        uint256 currentIndex = _epochIndex;
 
         //traverse inversely to make more current queries more gas efficient
-        for (uint256 i = _epochIndex; i + 1 != 0; i--) {
-            Epoch storage epoch = epochs[i];
+        // the provided epoch is not counted since its treated as the 'current' epoch
+        do {
+            currentIndex--;
+            Epoch storage epoch = epochs[currentIndex];
             if (epoch.startTime <= cutoffEpoch) {
                 break;
             }
-            supply += epochs[i].supply;
-        }
+            supply += epochs[currentIndex].supply;
+        } while (currentIndex > 0);
 
         return supply;
     }
