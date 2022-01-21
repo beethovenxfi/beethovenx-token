@@ -10,7 +10,7 @@ const deployGohmRewarder = async function ({ ethers, getNamedAccounts, deploymen
     log: true,
     deterministicDeployment: false,
     contract: "TimeBasedRewarder",
-    args: ["0x91fa20244Fb509e8289CA630E5db3E9166233FDc", "2893518518518", "0x8166994d9ebBe5829EC86Bd81258149B87faCfd3"],
+    args: [0x91fa20244fb509e8289ca630e5db3e9166233fdc, 2893518518518, 0x8166994d9ebbe5829ec86bd81258149b87facfd3],
   })
 }
 

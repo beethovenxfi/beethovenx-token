@@ -244,9 +244,9 @@ contract TimeBasedRewarder is IRewarder, Ownable {
         }
     }
 
-    /// @notice Emergency withdraw total balance of this token
+    /// @notice Withdraw total balance of token
     /// @param token The token to withdraw
-    /// @param withdrawTo The address to withdraw to
+    /// @param withdrawTo Recipient address
     function emergencyWithdraw(address token, address withdrawTo)
         external
         onlyOwner
