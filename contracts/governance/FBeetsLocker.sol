@@ -9,11 +9,15 @@ import "hardhat/console.sol";
 
 /*
     Based on CVX Staking contract for https://www.convexfinance.com - https://github.com/convex-eth/platform/blob/main/contracts/contracts/CvxLocker.sol
+    Changes:
+        - upgrade to solidity 0.8.7
+        - remove boosted concept
+        - remove staking of locked tokens
 
      *** Locking mechanism ***
 
-    This locking mechanism is based on epochs with a duration of 1 week. when locking our tokens,
-    the unlock time for this lock period is set to the start of the current running epoch + 17 weeks.
+    This locking mechanism is based on epochs. An epoch is defined by the `epochDuration`. When locking our tokens,
+    the unlock time for this lock period is set to the start of the current running epoch + `lockDuration`.
     The locked tokens of the current epoch are not eligible for voting. Therefore we need to wait for the next
     epoch until we can vote.
     All tokens locked within the same epoch share the same lock and therefore the same unlock time.
@@ -52,10 +56,10 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     mapping(address => Reward) public rewardData;
 
-    uint256 public constant epochDuration = 86400 * 7;
+    uint256 public immutable epochDuration;
 
     // Duration of lock/earned penalty period
-    uint256 public constant lockDuration = epochDuration * 17;
+    uint256 public immutable lockDuration;
 
     uint256 public constant denominator = 10000;
 
@@ -108,13 +112,24 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     /* ========== CONSTRUCTOR ========== */
 
-    constructor(IERC20 _lockingToken) {
+    constructor(
+        IERC20 _lockingToken,
+        uint256 _epochDuration,
+        uint256 _lockDuration
+    ) {
         _name = "Vote Locked fBeets Token";
         _symbol = "vfBeets";
         _decimals = 18;
         lockingToken = _lockingToken;
+        epochDuration = _epochDuration;
+        lockDuration = _lockDuration;
 
-        epochs.push(Epoch({supply: 0, startTime: _currentEpoch()}));
+        epochs.push(
+            Epoch({
+                supply: 0,
+                startTime: (block.timestamp / _epochDuration) * _epochDuration
+            })
+        );
     }
 
     function decimals() public view returns (uint8) {
@@ -136,11 +151,17 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         public
         onlyOwner
     {
-        require(rewardData[_rewardsToken].lastUpdateTime == 0);
-        require(_rewardsToken != address(lockingToken));
+        require(
+            rewardData[_rewardsToken].lastUpdateTime == 0,
+            "Reward token already added"
+        );
+        require(
+            _rewardsToken != address(lockingToken),
+            "Rewarding the locking token is not allowed"
+        );
         rewardTokens.push(_rewardsToken);
-        rewardData[_rewardsToken].lastUpdateTime = uint40(block.timestamp);
-        rewardData[_rewardsToken].periodFinish = uint40(block.timestamp);
+        rewardData[_rewardsToken].lastUpdateTime = block.timestamp;
+        rewardData[_rewardsToken].periodFinish = block.timestamp;
         rewardDistributors[_rewardsToken][_distributor] = true;
     }
 
@@ -150,7 +171,10 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         address _distributor,
         bool _approved
     ) external onlyOwner {
-        require(rewardData[_rewardsToken].lastUpdateTime > 0);
+        require(
+            rewardData[_rewardsToken].lastUpdateTime > 0,
+            "Reward token has not been added"
+        );
         rewardDistributors[_rewardsToken][_distributor] = _approved;
     }
 
@@ -177,7 +201,16 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         view
         returns (uint256)
     {
-        return rewardData[_rewardsToken].rewardPerTokenStored;
+        if (totalLockedSupply == 0) {
+            return rewardData[_rewardsToken].rewardPerTokenStored;
+        }
+
+        Reward memory reward = rewardData[_rewardsToken];
+        uint256 remainingTime = _lastTimeRewardApplicable(reward.periodFinish) -
+            reward.lastUpdateTime;
+        return
+            reward.rewardPerTokenStored +
+            (((remainingTime * reward.rewardRate) * 1e18) / totalLockedSupply);
     }
 
     function _earned(
@@ -253,8 +286,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     // an epoch is always the timestamp on the start of an epoch
     function _currentEpoch() internal view returns (uint256) {
-        uint256 val = (block.timestamp / epochDuration);
-        return val * epochDuration;
+        return (block.timestamp / epochDuration) * epochDuration;
     }
 
     //balance of an account which only includes properly locked tokens as of the most recent eligible epoch
@@ -663,13 +695,14 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     /* ========== RESTRICTED FUNCTIONS ========== */
 
-    // todo: not quite clear ?
     function _notifyReward(address _rewardsToken, uint256 _reward) internal {
         Reward storage tokenRewardData = rewardData[_rewardsToken];
 
+        // if there has not been a reward for the duration of an epoch, the reward rate resets
         if (block.timestamp >= tokenRewardData.periodFinish) {
             tokenRewardData.rewardRate = _reward / epochDuration;
         } else {
+            // adjust reward rate with additional rewards
             uint256 remaining = tokenRewardData.periodFinish - block.timestamp;
 
             uint256 leftover = remaining * tokenRewardData.rewardRate;
@@ -725,9 +758,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             Balances storage userBalance = balances[_account];
             for (uint256 i = 0; i < rewardTokens.length; i++) {
                 address token = rewardTokens[i];
-                // todo: why ? just to cast to unit208 ?
-                //                rewardData[token].rewardPerTokenStored = _rewardPerToken(token)
-                //                    .to208();
+                rewardData[token].rewardPerTokenStored = _rewardPerToken(token);
                 rewardData[token].lastUpdateTime = _lastTimeRewardApplicable(
                     rewardData[token].periodFinish
                 );

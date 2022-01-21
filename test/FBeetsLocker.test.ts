@@ -5,6 +5,7 @@ import {
   advanceTime,
   advanceTimeAndBlock,
   advanceToTime,
+  getBlockTime,
   bn,
   deployContract,
   deployERC20Mock,
@@ -26,8 +27,8 @@ describe("fBeets locking contract", function () {
   let fBeets: BeetsBar
   let locker: FBeetsLocker
   let owner: SignerWithAddress
-  let dev: SignerWithAddress
-  let treasury: SignerWithAddress
+  let rewarder: SignerWithAddress
+  let anotherRewarder: SignerWithAddress
   let alice: SignerWithAddress
   let bob: SignerWithAddress
   let carol: SignerWithAddress
@@ -35,17 +36,17 @@ describe("fBeets locking contract", function () {
   before(async function () {
     const signers = await ethers.getSigners()
     owner = signers[0]
-    dev = signers[1]
-    treasury = signers[2]
-    alice = signers[4]
-    bob = signers[5]
-    carol = signers[6]
+    rewarder = signers[1]
+    anotherRewarder = signers[2]
+    alice = signers[3]
+    bob = signers[4]
+    carol = signers[5]
   })
 
   beforeEach(async function () {
     bpt = await deployERC20Mock("BEETS_FTM", "BPT", bn(10000))
     fBeets = await deployContract("BeetsBar", [bpt.address])
-    locker = await deployContract<FBeetsLocker>("FBeetsLocker", [fBeets.address])
+    locker = await deployContract<FBeetsLocker>("FBeetsLocker", [fBeets.address, EPOCH_DURATION, LOCK_DURATION])
   })
 
   it("sets correct initial state", async () => {
@@ -655,6 +656,69 @@ describe("fBeets locking contract", function () {
     ])
   })
 
+  it("allows owner to add reward token with a distributor contract", async () => {
+    /*
+          we create an entry for each reward token which
+           - sets last update time to current time
+           - sets the period finish to the current time
+           - whitelists the reward distributor
+       */
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    const transaction = await locker.addReward(rewardToken.address, rewarder.address)
+    const blockTime = await getBlockTime(transaction.blockHash!)
+    const rewardData = await locker.rewardData(rewardToken.address)
+    expect(rewardData.lastUpdateTime).to.equal(blockTime)
+    expect(rewardData.periodFinish).to.equal(blockTime)
+    // check for whitelisting
+    expect(await locker.rewardDistributors(rewardToken.address, rewarder.address)).to.be.true
+  })
+
+  it("rejects adding of reward if sender is not owner", async () => {
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    await expect(locker.connect(bob).addReward(rewardToken.address, rewarder.address)).to.be.revertedWith("Ownable: caller is not the owner")
+  })
+
+  it("rejects if reward token has already been added", async () => {
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    await locker.addReward(rewardToken.address, rewarder.address)
+    await expect(locker.addReward(rewardToken.address, rewarder.address)).to.be.revertedWith("Reward token already added")
+  })
+
+  it("rejects if reward token is the locking token", async () => {
+    // the token which will be locked cannot be rewarded
+    await expect(locker.addReward(fBeets.address, rewarder.address)).to.be.revertedWith("Rewarding the locking token is not allowed")
+  })
+
+  it("allows owner to change whitelisting of reward distributor", async () => {
+    /*
+        we can black / whitelist reward distributors
+     */
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    await locker.addReward(rewardToken.address, rewarder.address)
+    await locker.approveRewardDistributor(rewardToken.address, rewarder.address, false)
+    expect(await locker.rewardDistributors(rewardToken.address, rewarder.address)).to.be.false
+    await locker.approveRewardDistributor(rewardToken.address, rewarder.address, true)
+    expect(await locker.rewardDistributors(rewardToken.address, rewarder.address)).to.be.true
+  })
+
+  it("allows owner to add additional reward distributor for a token", async () => {
+    /*
+        there can also be multiple reward distributors for the same reward token
+     */
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    await locker.addReward(rewardToken.address, rewarder.address)
+    await locker.approveRewardDistributor(rewardToken.address, anotherRewarder.address, true)
+    expect(await locker.rewardDistributors(rewardToken.address, rewarder.address)).to.be.true
+    expect(await locker.rewardDistributors(rewardToken.address, anotherRewarder.address)).to.be.true
+  })
+
+  it("rejects when changing reward distributor approval of a token which has not been added yet", async () => {
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    await expect(locker.approveRewardDistributor(rewardToken.address, anotherRewarder.address, true)).to.be.revertedWith(
+      "Reward token has not been added"
+    )
+  })
+
   it("allows to kick out expired locks after 4 epochs since lock has expired for a small reward", async () => {
     /*
 
@@ -672,6 +736,6 @@ describe("fBeets locking contract", function () {
   }
 
   async function currentEpoch() {
-    return Math.trunc((await latest()) / EPOCH_DURATION) * EPOCH_DURATION
+    return Math.trunc((await latest()).toNumber() / EPOCH_DURATION) * EPOCH_DURATION
   }
 })

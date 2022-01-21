@@ -192,7 +192,7 @@ describe("BeethovenxMasterChef", function () {
     await lp1Token.connect(alice).approve(chef.address, 10)
 
     const depositionPoint = await chef.connect(alice).deposit(0, 1, alice.address)
-    await advanceBlockTo((depositionPoint.blockNumber! + 9).toString())
+    await advanceBlockTo(depositionPoint.blockNumber! + 9)
     await chef.updatePool(0)
     expect(await chef.pendingBeets(0, alice.address)).to.equal(percentageOf(beetsPerblock.mul(10), lpPercentage))
   })
@@ -238,26 +238,26 @@ describe("BeethovenxMasterChef", function () {
     await chef.add("100", lp.address, ethers.constants.AddressZero)
 
     await chef.connect(bob).deposit(0, 100, bob.address)
-    await advanceBlockTo("110")
+    await advanceBlockTo(110)
 
     await chef.updatePool(0)
     expect(await beets.balanceOf(bob.address)).to.equal(0)
-    await advanceBlockTo("120")
+    await advanceBlockTo(120)
 
     await chef.updatePool(0)
     expect(await beets.balanceOf(bob.address)).to.equal(0)
-    await advanceBlockTo("130")
+    await advanceBlockTo(130)
 
     await chef.updatePool(0) // block 100
     expect(await beets.balanceOf(bob.address)).to.equal(0)
-    await advanceBlockTo("150")
+    await advanceBlockTo(150)
 
     await chef.connect(bob).harvest(0, bob.address)
     expect(await beets.balanceOf(bob.address)).to.equal(percentageOf(beetsPerBlock, lpPercentage))
     expect(await beets.balanceOf(treasury.address)).to.equal(percentageOf(beetsPerBlock, treasuryPercentage))
     expect(await beets.totalSupply()).to.equal(beetsPerBlock)
 
-    await advanceBlockTo("154")
+    await advanceBlockTo(154)
 
     await chef.connect(bob).harvest(0, bob.address) // block 105
     expect(await beets.balanceOf(bob.address)).to.equal(percentageOf(beetsPerBlock.mul(5), lpPercentage))
@@ -273,11 +273,11 @@ describe("BeethovenxMasterChef", function () {
 
     await chef.add("100", lp.address, ethers.constants.AddressZero)
 
-    await advanceBlockTo("199")
+    await advanceBlockTo(199)
     expect(await beets.totalSupply()).to.equal(0)
-    await advanceBlockTo("204")
+    await advanceBlockTo(204)
     expect(await beets.totalSupply()).to.equal(0)
-    await advanceBlockTo("209")
+    await advanceBlockTo(209)
     expect(await beets.totalSupply()).to.equal(0)
   })
 
@@ -312,18 +312,18 @@ describe("BeethovenxMasterChef", function () {
     await lp.connect(alice).approve(chef.address, bn(1000))
     await lp.connect(bob).approve(chef.address, bn(1000))
     await lp.connect(carol).approve(chef.address, bn(1000))
-    await advanceBlockTo("309")
+    await advanceBlockTo(309)
 
     // Alice deposits 10 LPs at block 310
     await chef.connect(alice).deposit(0, "10", alice.address)
 
-    await advanceBlockTo("312")
+    await advanceBlockTo(312)
     await chef.connect(alice).harvest(0, alice.address) // block 313
     expect(await beets.balanceOf(alice.address)).to.equal(lpRewards(3))
     // Bob deposits 20 LPs at block 314
 
     await chef.connect(bob).deposit(0, "20", bob.address) //314
-    await advanceBlockTo("315")
+    await advanceBlockTo(315)
 
     // we disable automine so we can do both harvest calls in 1 block
     await setAutomineBlocks(false)
@@ -331,7 +331,7 @@ describe("BeethovenxMasterChef", function () {
     await chef.connect(alice).harvest(0, alice.address) // block 316
     await chef.connect(bob).harvest(0, bob.address) // block 316
 
-    await advanceBlockTo("316")
+    await advanceBlockTo(316)
     await setAutomineBlocks(true)
     // alice should have 4 * bPB * lpPc + 2 * bPb / 3 * lpPc
     const aliceBalance316 = lpRewards(4).add(lpRewards(2).div(3))
@@ -342,7 +342,7 @@ describe("BeethovenxMasterChef", function () {
 
     // Carol deposits 30 LPs at block 318
     await chef.connect(carol).deposit(0, "30", carol.address) // block 317
-    await advanceBlockTo("319")
+    await advanceBlockTo(319)
 
     await chef.connect(alice).harvest(0, alice.address) // block 320
 
@@ -381,7 +381,7 @@ describe("BeethovenxMasterChef", function () {
 
     // alice deposits 10 more LP's
     await chef.connect(alice).deposit(0, "10", alice.address) // block 321
-    await advanceBlockTo("329")
+    await advanceBlockTo(329)
 
     // Bob withdraws 5 LPs
     await chef.connect(bob).withdrawAndHarvest(0, "5", bob.address) // block 330
@@ -418,7 +418,7 @@ describe("BeethovenxMasterChef", function () {
 
     expect(await beets.balanceOf(treasury.address)).to.equal(treasuryBalance330)
 
-    await advanceBlockTo("339")
+    await advanceBlockTo(339)
     // we only withdraw but dont harvest
     await chef.connect(alice).withdrawAndHarvest(0, 20, alice.address) // block 340
     /*
@@ -428,7 +428,7 @@ describe("BeethovenxMasterChef", function () {
     const aliceBalance340 = aliceBalance320.add(lpRewards(1).div(6)).add(lpRewards(9).mul(2).div(7)).add(lpRewards(10).mul(4).div(13))
     expect(await beets.balanceOf(alice.address)).to.equal(aliceBalance340)
 
-    await advanceBlockTo("349")
+    await advanceBlockTo(349)
 
     await chef.connect(bob).withdrawAndHarvest(0, 15, bob.address) // block 350
     /*
@@ -439,7 +439,7 @@ describe("BeethovenxMasterChef", function () {
     // we have to subtract 1 cause of rounding errors
     expect(await beets.balanceOf(bob.address)).to.equal(bobBalance330.add(lpRewards(10).mul(3).div(13)).add(lpRewards(10).div(3)).sub(1))
 
-    await advanceBlockTo("359")
+    await advanceBlockTo(359)
 
     await chef.connect(carol).withdrawAndHarvest(0, 30, carol.address) // block 360
     /*
@@ -476,9 +476,9 @@ describe("BeethovenxMasterChef", function () {
     // Add first LP to the pool with allocation 1
     await chef.add("10", lp.address, ethers.constants.AddressZero)
     // Alice deposits 10 LPs at block 410
-    await advanceBlockTo("409")
+    await advanceBlockTo(409)
     await chef.connect(alice).deposit(0, "10", alice.address)
-    await advanceBlockTo("419")
+    await advanceBlockTo(419)
 
     // Add LP2 to the pool with allocation 2 at block 420
     await setAutomineBlocks(false)
@@ -490,12 +490,12 @@ describe("BeethovenxMasterChef", function () {
     expect(await chef.pendingBeets(0, alice.address)).to.equal(alicePending420)
 
     // Bob deposits 10 LP2s at block 425
-    await advanceBlockTo("424")
+    await advanceBlockTo(424)
     await chef.connect(bob).deposit(1, "10", bob.address)
     // Alice should have alicePending420 + 5 blocks 1/4 of rewards
     const alicePendingBeets425 = alicePending420.add(lpRewards(5).div(4))
     expect(await chef.pendingBeets(0, alice.address)).to.equal(alicePendingBeets425)
-    await advanceBlockTo("430")
+    await advanceBlockTo(430)
     // At block 430. Bob should get 5*3/4 of rewards
     expect(await chef.pendingBeets(0, alice.address)).to.equal(alicePendingBeets425.add(lpRewards(5).div(4)))
     expect(await chef.pendingBeets(1, bob.address)).to.equal(lpRewards(5).mul(3).div(4))
@@ -550,7 +550,7 @@ describe("BeethovenxMasterChef", function () {
     await chef.connect(bob).deposit(3, 10, bob.address)
     await setAutomineBlocks(true)
 
-    await advanceBlockTo(((await ethers.provider.getBlockNumber()) + 10).toString())
+    await advanceBlockTo((await ethers.provider.getBlockNumber()) + 10)
 
     const expectedBeets = lpRewards(10).mul(2).div(4)
 

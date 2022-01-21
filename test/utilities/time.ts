@@ -1,9 +1,6 @@
-import { network } from "hardhat"
+import { network, ethers } from "hardhat"
 import { ContractTransaction } from "@ethersproject/contracts"
-
-const { ethers } = require("hardhat")
-
-const { BigNumber } = ethers
+import { BigNumber } from "ethers"
 
 export async function advanceBlock() {
   return ethers.provider.send("evm_mine", [])
@@ -15,7 +12,7 @@ export async function advanceBlocks(amount: number) {
   }
 }
 
-export async function advanceBlockTo(blockNumber: string) {
+export async function advanceBlockTo(blockNumber: number) {
   for (let i = await ethers.provider.getBlockNumber(); i < blockNumber; i++) {
     await advanceBlock()
   }
@@ -39,6 +36,11 @@ export async function increase(value: number) {
 
 export async function latest() {
   const block = await ethers.provider.getBlock("latest")
+  return BigNumber.from(block.timestamp)
+}
+
+export async function getBlockTime(blockHash: string): Promise<BigNumber> {
+  const block = await ethers.provider.getBlock(blockHash)
   return BigNumber.from(block.timestamp)
 }
 
