@@ -24,13 +24,15 @@ import "hardhat/console.sol";
 
 
     *** Rewards ***
-    todo:...
+
+    Rewards are shared between users based on the total amount of locking tokens in the contract. This includes
+    tokens which have been locked in the current epoch and also tokens of expired locks. To incentivize people to
+    either withdraw their expired locks or re-lock, there is an incentive mechanism to kick out expired locks and
+    collect a percentage of the locked tokens in return.
 */
 
 contract FBeetsLocker is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
-
-    /* ========== STATE VARIABLES ========== */
 
     struct Epoch {
         uint256 supply; //epoch locked supply
@@ -39,7 +41,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     IERC20 public immutable lockingToken;
 
-    //rewards
     struct EarnedData {
         address token;
         uint256 amount;
@@ -58,7 +59,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     uint256 public immutable epochDuration;
 
-    // Duration of lock/earned penalty period
     uint256 public immutable lockDuration;
 
     uint256 public constant denominator = 10000;
@@ -71,7 +71,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         public userRewardPerTokenPaid;
     mapping(address => mapping(address => uint256)) public rewards;
 
-    //supplies and epochs
     uint256 public totalLockedSupply;
     Epoch[] public epochs;
 
@@ -108,8 +107,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     string private constant _symbol = "vfBeets";
     uint8 private constant _decimals = 18;
 
-    /* ========== CONSTRUCTOR ========== */
-
     constructor(
         IERC20 _lockingToken,
         uint256 _epochDuration,
@@ -139,41 +136,46 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return _symbol;
     }
 
-    /* ========== ADMIN CONFIGURATION ========== */
-
-    // Add a new reward token to be distributed to lockers
-    function addReward(address _rewardsToken, address _distributor)
+    /// @notice Add a new reward token to be distributed to lockers
+    /// @param _rewardToken The rewarded token by the `_distributor`
+    /// @param _distributor Address of the reward token sender
+    function addReward(address _rewardToken, address _distributor)
         public
         onlyOwner
     {
         require(
-            rewardData[_rewardsToken].lastUpdateTime == 0,
+            rewardData[_rewardToken].lastUpdateTime == 0,
             "Reward token already added"
         );
         require(
-            _rewardsToken != address(lockingToken),
+            _rewardToken != address(lockingToken),
             "Rewarding the locking token is not allowed"
         );
-        rewardTokens.push(_rewardsToken);
-        rewardData[_rewardsToken].lastUpdateTime = block.timestamp;
-        rewardData[_rewardsToken].periodFinish = block.timestamp;
-        rewardDistributors[_rewardsToken][_distributor] = true;
+        rewardTokens.push(_rewardToken);
+        rewardData[_rewardToken].lastUpdateTime = block.timestamp;
+        rewardData[_rewardToken].periodFinish = block.timestamp;
+        rewardDistributors[_rewardToken][_distributor] = true;
     }
 
-    // Modify approval for an address to call notifyRewardAmount
+    /// @notice Modify approval for a distributor to call `notifyRewardAmount`
+    /// @param _rewardToken Reward token to change distributor approval
+    /// @param _distributor Address of reward distributor
+    /// @param _approved Flag to white- or blacklist the distributor for this reward token
     function approveRewardDistributor(
-        address _rewardsToken,
+        address _rewardToken,
         address _distributor,
         bool _approved
     ) external onlyOwner {
         require(
-            rewardData[_rewardsToken].lastUpdateTime > 0,
+            rewardData[_rewardToken].lastUpdateTime > 0,
             "Reward token has not been added"
         );
-        rewardDistributors[_rewardsToken][_distributor] = _approved;
+        rewardDistributors[_rewardToken][_distributor] = _approved;
     }
 
-    //set kick incentive
+    /// @notice Set kick incentive after epoch delay has passed
+    /// @param _kickRewardPerEpoch incentive per epoch to the base of the `denominator`
+    /// @param _kickRewardEpochDelay after how many epochs overdue an expired lock can be kicked out
     function setKickIncentive(
         uint256 _kickRewardPerEpoch,
         uint256 _kickRewardEpochDelay
@@ -184,23 +186,21 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         kickRewardEpochDelay = _kickRewardEpochDelay;
     }
 
-    //shutdown the contract. release all locks
+    /// @notice Shutdown the contract and release all locks
     function shutdown() external onlyOwner {
         isShutdown = true;
     }
 
-    /* ========== VIEWS ========== */
-
-    function _rewardPerToken(address _rewardsToken)
+    function _rewardPerToken(address _rewardToken)
         internal
         view
         returns (uint256)
     {
         if (totalLockedSupply == 0) {
-            return rewardData[_rewardsToken].rewardPerTokenStored;
+            return rewardData[_rewardToken].rewardPerTokenStored;
         }
 
-        Reward memory reward = rewardData[_rewardsToken];
+        Reward memory reward = rewardData[_rewardToken];
         uint256 secondsSinceLastApplicableRewardTime = _lastTimeRewardApplicable(
                 reward.periodFinish
             ) - reward.lastUpdateTime;
@@ -240,31 +240,35 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             _lastTimeRewardApplicable(rewardData[_rewardsToken].periodFinish);
     }
 
-    function rewardPerToken(address _rewardsToken)
+    /// @notice Returns the rewards gained for the reward period per locked token
+    /// @param _rewardToken The address of the reward token
+    function rewardPerToken(address _rewardToken)
         external
         view
         returns (uint256)
     {
-        return _rewardPerToken(_rewardsToken);
+        return _rewardPerToken(_rewardToken);
     }
 
-    // Address and claimable amount of all reward tokens for the given account
-    function claimableRewards(address _account)
+    /// @notice Returns rewarded amount for each token for the given address
+    /// @param _user User address
+    function claimableRewards(address _user)
         external
         view
         returns (EarnedData[] memory userRewards)
     {
         userRewards = new EarnedData[](rewardTokens.length);
-        uint256 lockedAmount = balances[_account].lockedAmount;
+        uint256 lockedAmount = balances[_user].lockedAmount;
         for (uint256 i = 0; i < userRewards.length; i++) {
             address token = rewardTokens[i];
             userRewards[i].token = token;
-            userRewards[i].amount = _earned(_account, token, lockedAmount);
+            userRewards[i].amount = _earned(_user, token, lockedAmount);
         }
         return userRewards;
     }
 
-    // total token balance of an account, including unlocked but not withdrawn tokens
+    /// @notice Total token balance of an account, including unlocked but not withdrawn tokens
+    /// @param _user User address
     function lockedBalanceOf(address _user)
         external
         view
@@ -278,7 +282,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return (block.timestamp / epochDuration) * epochDuration;
     }
 
-    //balance of an account which only includes properly locked tokens as of the most recent eligible epoch
+    /// @notice Balance of an account which only includes properly locked tokens as of the most recent eligible epoch
+    /// @param _user User address
     function balanceOf(address _user) external view returns (uint256 amount) {
         LockedBalance[] storage locks = userLocks[_user];
         Balances storage userBalance = balances[_user];
@@ -309,7 +314,9 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return amount;
     }
 
-    //balance of an account which only includes properly locked tokens at the given epoch
+    /// @notice Balance of an account which only includes properly locked tokens at the given epoch
+    /// @param _epoch Epoch index
+    /// @param _user User address
     function balanceAtEpochOf(uint256 _epoch, address _user)
         external
         view
@@ -347,7 +354,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return amount;
     }
 
-    //supply of all properly locked balances at most recent eligible epoch
+    /// @notice Supply of all properly locked balances at most recent eligible epoch
     function totalSupply() external view returns (uint256 supply) {
         uint256 currentEpoch = _currentEpoch();
         uint256 cutoffEpoch = currentEpoch - lockDuration;
@@ -374,7 +381,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return supply;
     }
 
-    //supply of all properly locked balances at the given epoch
+    /// @notice Supply of all properly locked balances at the given epoch
+    /// @param _epochIndex Epoch index
     function totalSupplyAtEpoch(uint256 _epochIndex)
         external
         view
@@ -410,7 +418,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return supply;
     }
 
-    //find an epoch index based on timestamp
+    /// @notice Find an epoch index based on timestamp
+    /// @param _time Timestamp
     function findEpochId(uint256 _time) external view returns (uint256 epoch) {
         uint256 max = epochs.length - 1;
         uint256 min = 0;
@@ -435,7 +444,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return min;
     }
 
-    // Information on a user's locked balances
+    /// @notice Information on a user's locked balances per locking period
+    /// @param _user User address
     function lockedBalances(address _user)
         external
         view
@@ -465,13 +475,12 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return (userBalance.lockedAmount, unlockable, locked, lockData);
     }
 
-    //number of epochs
+    /// @notice Total number of epochs
     function epochCount() external view returns (uint256) {
         return epochs.length;
     }
 
-    /* ========== MUTATIVE FUNCTIONS ========== */
-
+    /// @notice Fills in any missing epochs until current epoch
     function checkpointEpoch() external {
         _checkpointEpoch();
     }
@@ -492,20 +501,21 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         }
     }
 
-    // Locked tokens cannot be withdrawn for lockDuration and are eligible to receive stakingReward rewards
-    function lock(address _account, uint256 _amount)
+    /// @notice Lockes `_amount` tokens from `_user` for lockDuration and are eligible to receive stakingReward rewards
+    /// @param _user User to lock tokens from
+    /// @param _amount Amount to lock
+    function lock(address _user, uint256 _amount)
         external
         nonReentrant
-        updateReward(_account)
+        updateReward(_user)
     {
         //pull tokens
         lockingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         //lock
-        _lock(_account, _amount);
+        _lock(_user, _amount);
     }
 
-    //lock tokens
     function _lock(address _account, uint256 _amount) internal {
         require(_amount > 0, "Cannot lock 0 tokens");
         require(!isShutdown, "Contract is in shutdown");
@@ -542,7 +552,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         emit Locked(_account, _amount);
     }
 
-    // Withdraw all currently locked tokens where the unlock time has passed
+    /// @notice Withdraw all currently locked tokens where the unlock time has passed
     function _processExpiredLocks(
         address _account,
         bool _relock,
@@ -645,7 +655,9 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         }
     }
 
-    // Withdraw/relock all currently locked tokens where the unlock time has passed
+    /// @notice Withdraw/relock all currently locked tokens where the unlock time has passed
+    /// @param _relock Relock all expired locks
+    /// @param _withdrawTo Where to withdraw unlocked tokens to in case of no re-lock
     function processExpiredLocks(bool _relock, address _withdrawTo)
         external
         nonReentrant
@@ -653,36 +665,33 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         _processExpiredLocks(msg.sender, _relock, _withdrawTo, msg.sender, 0);
     }
 
-    function kickExpiredLocks(address _account) external nonReentrant {
+    /// @notice Kick expired locks of `_user` and collect kick reward
+    /// @param _user User to kick expired locks
+    function kickExpiredLocks(address _user) external nonReentrant {
         //allow kick after grace period of 'kickRewardEpochDelay'
         _processExpiredLocks(
-            _account,
+            _user,
             false,
-            _account,
+            _user,
             msg.sender,
             epochDuration * kickRewardEpochDelay
         );
     }
 
-    // Claim all pending rewards
-    function getReward(address _account)
-        public
-        nonReentrant
-        updateReward(_account)
-    {
+    /// @notice Claim all pending rewards
+    /// @param _user User address to claim rewards
+    function getReward(address _user) public nonReentrant updateReward(_user) {
         for (uint256 i; i < rewardTokens.length; i++) {
             address _rewardsToken = rewardTokens[i];
-            uint256 reward = rewards[_account][_rewardsToken];
+            uint256 reward = rewards[_user][_rewardsToken];
             if (reward > 0) {
-                rewards[_account][_rewardsToken] = 0;
-                IERC20(_rewardsToken).safeTransfer(_account, reward);
+                rewards[_user][_rewardsToken] = 0;
+                IERC20(_rewardsToken).safeTransfer(_user, reward);
 
-                emit RewardPaid(_account, _rewardsToken, reward);
+                emit RewardPaid(_user, _rewardsToken, reward);
             }
         }
     }
-
-    /* ========== RESTRICTED FUNCTIONS ========== */
 
     function _notifyReward(address _rewardsToken, uint256 _reward) internal {
         Reward storage tokenRewardData = rewardData[_rewardsToken];
@@ -702,26 +711,32 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         tokenRewardData.periodFinish = block.timestamp + epochDuration;
     }
 
-    function notifyRewardAmount(address _rewardsToken, uint256 _reward)
+    /// @notice Called by a reward distributor to distribute rewards
+    /// @param _rewardToken The token to reward
+    /// @param _amount The amount to reward
+    function notifyRewardAmount(address _rewardToken, uint256 _amount)
         external
         updateReward(address(0))
     {
-        require(rewardDistributors[_rewardsToken][msg.sender]);
-        require(_reward > 0, "No reward");
+        require(rewardDistributors[_rewardToken][msg.sender]);
+        require(_amount > 0, "No reward");
 
-        _notifyReward(_rewardsToken, _reward);
+        _notifyReward(_rewardToken, _amount);
 
         // handle the transfer of reward tokens via `transferFrom` to reduce the number
         // of transactions required and ensure correctness of the _reward amount
-        IERC20(_rewardsToken).safeTransferFrom(
+        IERC20(_rewardToken).safeTransferFrom(
             msg.sender,
             address(this),
-            _reward
+            _amount
         );
 
-        emit RewardAdded(_rewardsToken, _reward);
+        emit RewardAdded(_rewardToken, _amount);
     }
 
+    /// @notice Emergency function to withdraw non reward tokens
+    /// @param _tokenAddress The token to withdraw
+    /// @param _tokenAmount The amount to withdraw
     function recoverERC20(address _tokenAddress, uint256 _tokenAmount)
         external
         onlyOwner
@@ -737,8 +752,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         IERC20(_tokenAddress).safeTransfer(owner(), _tokenAmount);
         emit Recovered(_tokenAddress, _tokenAmount);
     }
-
-    /* ========== MODIFIERS ========== */
 
     modifier updateReward(address _account) {
         {
@@ -764,7 +777,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         _;
     }
 
-    /* ========== EVENTS ========== */
     event RewardAdded(address indexed _token, uint256 _reward);
     event Locked(address indexed _user, uint256 _lockedAmount);
     event Withdrawn(address indexed _user, uint256 _amount, bool _relocked);

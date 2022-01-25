@@ -1112,7 +1112,7 @@ describe("fBeets locking contract", function () {
 
     await someErc20.transfer(locker.address, erc20Amount)
 
-    await locker.recoverERC20(someErc20.address, erc20Amount)
+    await expect(locker.recoverERC20(someErc20.address, erc20Amount)).to.emit(locker, 'Recovered').withArgs(someErc20.address, erc20Amount)
     expect(await someErc20.balanceOf(owner.address)).to.equal(erc20Amount)
   })
 
