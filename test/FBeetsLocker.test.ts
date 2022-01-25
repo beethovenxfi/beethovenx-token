@@ -934,10 +934,71 @@ describe("fBeets locking contract", function () {
     expect(await rewardToken.balanceOf(alice.address)).to.equal(expectedAliceAmount)
   })
 
+  it("emits event when reward was payed", async () => {
+    const lockAmount = bn(200)
+    await mintFBeets(bob, lockAmount)
+    await fBeets.connect(bob).approve(locker.address, lockAmount)
+    await locker.connect(bob).lock(bob.address, lockAmount)
+    // now prepare the rewards
+    const { rewardToken } = await aRewardToken()
+    const rewardAmount = bn(100)
+
+    await locker.addReward(rewardToken.address, rewarder.address)
+
+    await rewardToken.connect(rewarder).approve(locker.address, rewardAmount)
+    await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, rewardAmount)
+
+    await advanceTime(EPOCH_DURATION)
+
+    await expect(locker.getReward(bob.address))
+      .to.emit(locker, "RewardPaid")
+      .withArgs(bob.address, rewardToken.address, rewardAmount.div(EPOCH_DURATION).mul(EPOCH_DURATION))
+  })
+
   it("allows to kick out expired locks after 4 epochs since lock has expired for a small reward", async () => {
     /*
-
+        because rewards are distributed based on the total tokens in the contract independent of their locking
+        state (expired / current epoch) due to the issue that its hard to find the total supply of the 'eligible'
+        tokens, there is a mechanism to incentivize others to kick out locks that are expired for more than
+        defined epochs. There is a kick incentive which scales linear with the amount of epochs the lock is overdue.
      */
+
+    const lockAmount = bn(200)
+    await mintFBeets(bob, lockAmount)
+    await fBeets.connect(bob).approve(locker.address, lockAmount)
+    await locker.connect(bob).lock(bob.address, lockAmount)
+
+    // now we advance by lock duration + kick delay
+    const kickEpochDelay = await locker.kickRewardEpochDelay()
+    await advanceTime(LOCK_DURATION + EPOCH_DURATION * kickEpochDelay.toNumber())
+
+    // now we should be able to kick bob out with an incentive of 1 epoch overdue
+    await locker.connect(alice).kickExpiredLocks(bob.address)
+
+    const kickRewardPerEpoch = await locker.kickRewardPerEpoch()
+    const kickRewardDenominator = await locker.denominator()
+
+    // so the reward is lockAmount * epochs overdue * kick reward per epoch / kick reward denominator
+    const rewardAfter1Epoch = lockAmount.mul(1).mul(kickRewardPerEpoch).div(kickRewardDenominator)
+
+    expect(await fBeets.balanceOf(bob.address)).to.equal(lockAmount.sub(rewardAfter1Epoch))
+    expect(await fBeets.balanceOf(alice.address)).to.equal(rewardAfter1Epoch)
+
+    // now lets see if it also works with 3 epochs overdue
+
+    await mintFBeets(carol, lockAmount)
+    await fBeets.connect(carol).approve(locker.address, lockAmount)
+    await locker.connect(carol).lock(carol.address, lockAmount)
+
+    await advanceTime(LOCK_DURATION + EPOCH_DURATION * kickEpochDelay.toNumber() + 2 * EPOCH_DURATION)
+
+    // now we should be able to kick bob out with an incentive of 3 epoch overdue
+    await locker.connect(alice).kickExpiredLocks(carol.address)
+    // so the reward is lockAmount * epochs overdue * kick reward per epoch / kick reward denominator
+    const rewardAfter3Epochs = lockAmount.mul(3).mul(kickRewardPerEpoch).div(kickRewardDenominator)
+
+    expect(await fBeets.balanceOf(carol.address)).to.equal(lockAmount.sub(rewardAfter3Epochs))
+    expect(await fBeets.balanceOf(alice.address)).to.equal(rewardAfter1Epoch.add(rewardAfter3Epochs))
   })
 
   async function aRewardToken(tokenRewarder: SignerWithAddress = rewarder, supply: number = 10_000) {

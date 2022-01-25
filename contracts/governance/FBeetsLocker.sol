@@ -98,17 +98,15 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     mapping(address => LockedBalance[]) public userLocks;
 
-    //management
     uint256 public kickRewardPerEpoch = 100;
     uint256 public kickRewardEpochDelay = 4;
 
-    //shutdown
     bool public isShutdown = false;
 
     //erc20-like interface
-    string private _name;
-    string private _symbol;
-    uint8 private immutable _decimals;
+    string private constant _name = "Vote Locked fBeets Token";
+    string private constant _symbol = "vfBeets";
+    uint8 private constant _decimals = 18;
 
     /* ========== CONSTRUCTOR ========== */
 
@@ -117,9 +115,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         uint256 _epochDuration,
         uint256 _lockDuration
     ) {
-        _name = "Vote Locked fBeets Token";
-        _symbol = "vfBeets";
-        _decimals = 18;
         lockingToken = _lockingToken;
         epochDuration = _epochDuration;
         lockDuration = _lockDuration;
@@ -132,15 +127,15 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         );
     }
 
-    function decimals() public view returns (uint8) {
+    function decimals() public pure returns (uint8) {
         return _decimals;
     }
 
-    function name() public view returns (string memory) {
+    function name() public pure returns (string memory) {
         return _name;
     }
 
-    function symbol() public view returns (string memory) {
+    function symbol() public pure returns (string memory) {
         return _symbol;
     }
 
@@ -253,13 +248,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return _rewardPerToken(_rewardsToken);
     }
 
-    function getRewardForDuration(address _rewardsToken)
-        external
-        view
-        returns (uint256)
-    {
-        return rewardData[_rewardsToken].rewardRate * epochDuration;
-    }
 
     // Address and claimable amount of all reward tokens for the given account
     function claimableRewards(address _account)
@@ -644,7 +632,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             //reduce return amount by the kick reward
             unlockedAmount -= reward;
 
-            lockingToken.safeTransfer(_account, reward);
+            lockingToken.safeTransfer(_rewardAddress, reward);
 
             emit KickReward(_rewardAddress, _account, reward);
         }
