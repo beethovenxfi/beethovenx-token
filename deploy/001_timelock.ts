@@ -1,6 +1,6 @@
 import { HardhatRuntimeEnvironment } from "hardhat/types"
 
-export default async function ({ ethers, getNamedAccounts, deployments }: HardhatRuntimeEnvironment) {
+const deployTimelock = async function ({ ethers, getNamedAccounts, deployments }: HardhatRuntimeEnvironment) {
   const { deploy } = deployments
 
   const { deployer } = await getNamedAccounts()
@@ -11,6 +11,7 @@ export default async function ({ ethers, getNamedAccounts, deployments }: Hardha
     deterministicDeployment: false,
     args: [deployer, 21600],
   })
-
-  console.log("timelock constructor args", JSON.stringify(args))
 }
+
+deployTimelock.tags = ["Timelock"]
+export default deployTimelock

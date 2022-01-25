@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../interfaces/IRewarder.sol";
 import "../token/BeethovenxMasterChef.sol";
 
-contract TimeBasedRewarder is IRewarder, Ownable {
+contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable rewardToken;
@@ -36,7 +36,7 @@ contract TimeBasedRewarder is IRewarder, Ownable {
     uint256 public rewardPerSecond;
     uint256 private constant ACC_TOKEN_PRECISION = 1e12;
 
-    address private immutable MASTERCHEF;
+    address public immutable MASTERCHEF;
 
     event LogOnReward(
         address indexed user,
@@ -242,5 +242,18 @@ contract TimeBasedRewarder is IRewarder, Ownable {
                 pool.accRewardTokenPerShare
             );
         }
+    }
+
+    /// @notice Withdraw total balance of token
+    /// @param token The token to withdraw
+    /// @param withdrawTo Recipient address
+    function emergencyWithdraw(address token, address withdrawTo)
+        external
+        onlyOwner
+    {
+        IERC20(token).transfer(
+            withdrawTo,
+            IERC20(token).balanceOf(address(this))
+        );
     }
 }
