@@ -6,7 +6,7 @@ import { advanceBlock, advanceBlockRelativeTo, advanceToTime, bn, deployChef, de
 import { expect } from "chai"
 import { BigNumber } from "ethers"
 
-describe("BeethovenxMasterChef", function () {
+describe("MasterChef LP token timelock", function () {
   let beets: BeethovenxToken
   let chef: BeethovenxMasterChef
   let owner: SignerWithAddress

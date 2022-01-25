@@ -5,19 +5,17 @@ import {
   advanceTime,
   advanceTimeAndBlock,
   advanceToTime,
-  getBlockTime,
   bn,
   deployContract,
   deployERC20Mock,
+  getBlockTime,
   latest,
   setAutomineBlocks,
 } from "./utilities"
 import { ethers } from "hardhat"
 import { BeetsBar, ERC20Mock, FBeetsLocker } from "../types"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
-import moment from "moment"
 import { BigNumber } from "ethers"
-import exp from "constants"
 
 describe("fBeets locking contract", function () {
   const DENOMINATOR = 10000
@@ -476,12 +474,15 @@ describe("fBeets locking contract", function () {
     expect(await locker.balanceOf(bob.address)).to.equal(secondLockAmount)
   })
 
-  it("exposed balanceOf for a specific epoch", async () => {
+  it("returns balanceOf for a specific epoch", async () => {
     /*
         we can also get the balanceOf at a specific epoch, the epoch we provide does
         not count towards it. so its as the epoch we provide is the current epoch
      */
     const firstEpoch = await currentEpoch()
+
+    // if there are no locks, it should return 0
+    expect(await locker.balanceAtEpochOf(0, bob.address)).to.equal(0)
 
     const firstUnlockTime = firstEpoch + LOCK_DURATION
     const firstLockAmount = bn(100)
@@ -512,7 +513,7 @@ describe("fBeets locking contract", function () {
     expect(await locker.balanceAtEpochOf(16, bob.address)).to.equal(firstLockAmount.add(secondLockAmount))
   })
 
-  it("exposes total locked supply", async () => {
+  it("returns total locked supply", async () => {
     /*
         the totalSupply should return the total amount of properly locked tokens, meaning
         no expired locks and also not locks of the current epoch. So we create an expired lock, an active
@@ -543,6 +544,16 @@ describe("fBeets locking contract", function () {
     await locker.connect(carol).lock(carol.address, currentEpochLockAmount)
 
     expect(await locker.totalSupply()).to.equal(activeLockAmount)
+  })
+
+  it("returns a total supply of 0 for the first epoch", async () => {
+    // since the current epoch doesnt count, total supply has to be 0
+    const lockAmount = bn(100)
+    await mintFBeets(bob, lockAmount)
+    await fBeets.connect(bob).approve(locker.address, lockAmount)
+    await locker.connect(bob).lock(bob.address, lockAmount)
+
+    expect(await locker.totalSupply()).to.equal(0)
   })
 
   it("exposed total locked supply at a specific epoch", async () => {
@@ -590,6 +601,20 @@ describe("fBeets locking contract", function () {
     expect(await locker.totalSupplyAtEpoch(epochCount.toNumber() - 1)).to.equal(secondLockAmount.add(thirdLockAmount))
   })
 
+  it("returns the total locked token supply of a user", async () => {
+    /*
+         we can get the total locked tokens of a user in the contract including expired tokens
+         and the tokens of the current epoch
+     */
+
+    const lockAmount = bn(100)
+    await mintFBeets(bob, lockAmount)
+    await fBeets.connect(bob).approve(locker.address, lockAmount)
+    await locker.connect(bob).lock(bob.address, lockAmount)
+
+    expect(await locker.lockedBalanceOf(bob.address)).to.equal(lockAmount)
+  })
+
   it("finds the matching epoch of a timestamp", async () => {
     // lets create 10 epochs
     const firstEpoch = await currentEpoch()
@@ -598,6 +623,8 @@ describe("fBeets locking contract", function () {
     // fill in 10 epochs plus the next one
     await locker.checkpointEpoch()
     expect(await locker.epochCount()).to.equal(11)
+
+    expect(await locker.findEpochId(firstEpoch)).to.equal(0)
 
     expect(await locker.findEpochId(firstEpoch + EPOCH_DURATION + EPOCH_DURATION / 2)).to.equal(1)
     // first epoch + 4 epoch durations should be the start of the 5th epoch which means epoch index 4
@@ -955,6 +982,59 @@ describe("fBeets locking contract", function () {
       .withArgs(bob.address, rewardToken.address, rewardAmount.div(EPOCH_DURATION).mul(EPOCH_DURATION))
   })
 
+  it("returns reward per locked token for a specific reward token", async () => {
+    /*
+      we can get the rewards you get for the current reward period for a reward token per token locked
+     */
+    const lockAmount = bn(200)
+    await mintFBeets(bob, lockAmount)
+    await fBeets.connect(bob).approve(locker.address, lockAmount)
+    await locker.connect(bob).lock(bob.address, lockAmount)
+    // now prepare the rewards
+    const { rewardToken } = await aRewardToken()
+    const rewardAmount = bn(100)
+
+    await locker.addReward(rewardToken.address, rewarder.address)
+
+    await rewardToken.connect(rewarder).approve(locker.address, rewardAmount)
+    await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, rewardAmount)
+
+    await advanceTime(EPOCH_DURATION / 2)
+    /*
+        we have a total locked amount of `lockedAmount` tokens and a distribution
+        time of half an epoch. therefore the reward per token should be
+        epoch duration / 2 *  reward rate / total locked supply
+     */
+    const expectedRewardPerToken = bn(EPOCH_DURATION, 0).div(2).mul(rewardAmount.div(EPOCH_DURATION)).div(lockAmount)
+    expect(await locker.rewardPerToken(rewardToken.address)).to.equal(expectedRewardPerToken)
+  })
+
+  it("returns last reward time per reward token", async () => {
+    /*
+        rewards are always distributed during an epoch from the time of distribution. so the last reward time
+        for a token is the lesser of either the current block time or the finish of the reward period
+     */
+    const { rewardToken } = await aRewardToken()
+    const rewardAmount = bn(100)
+
+    await locker.addReward(rewardToken.address, rewarder.address)
+
+    await rewardToken.connect(rewarder).approve(locker.address, rewardAmount)
+    const rewardTx = await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, rewardAmount)
+    const rewardBlockTime = await getBlockTime(rewardTx.blockHash!)
+
+    await advanceTimeAndBlock(EPOCH_DURATION / 2)
+
+    // the last reward  time should now be the reward block time + half an epoch
+
+    expect(await locker.lastTimeRewardApplicable(rewardToken.address)).to.equal(rewardBlockTime.add(EPOCH_DURATION / 2))
+
+    await advanceTimeAndBlock(EPOCH_DURATION)
+
+    // now we passed the end of the reward period, so the last reward time should be the reward block time + epoch duration
+    expect(await locker.lastTimeRewardApplicable(rewardToken.address)).to.equal(rewardBlockTime.add(EPOCH_DURATION))
+  })
+
   it("allows to kick out expired locks after 4 epochs since lock has expired for a small reward", async () => {
     /*
         because rewards are distributed based on the total tokens in the contract independent of their locking
@@ -984,21 +1064,76 @@ describe("fBeets locking contract", function () {
     expect(await fBeets.balanceOf(bob.address)).to.equal(lockAmount.sub(rewardAfter1Epoch))
     expect(await fBeets.balanceOf(alice.address)).to.equal(rewardAfter1Epoch)
 
-    // now lets see if it also works with 3 epochs overdue
+    // now lets see if it also works with 2 epochs overdue
 
-    await mintFBeets(carol, lockAmount)
-    await fBeets.connect(carol).approve(locker.address, lockAmount)
-    await locker.connect(carol).lock(carol.address, lockAmount)
+    const carolFirstLockAmount = bn(200)
+    await mintFBeets(carol, carolFirstLockAmount)
+    await fBeets.connect(carol).approve(locker.address, carolFirstLockAmount)
+    await locker.connect(carol).lock(carol.address, carolFirstLockAmount)
 
-    await advanceTime(LOCK_DURATION + EPOCH_DURATION * kickEpochDelay.toNumber() + 2 * EPOCH_DURATION)
+    await advanceTime(EPOCH_DURATION)
+    // and one with 1 epochs overdue
+    const carolSecondLockAmount = bn(400)
+    await mintFBeets(carol, carolSecondLockAmount)
+    await fBeets.connect(carol).approve(locker.address, carolSecondLockAmount)
+    await locker.connect(carol).lock(carol.address, carolSecondLockAmount)
 
-    // now we should be able to kick bob out with an incentive of 3 epoch overdue
+    await advanceTime(LOCK_DURATION + EPOCH_DURATION * kickEpochDelay.toNumber())
+
+    // we create another lock which is still good
+    const thirdLockAmount = bn(100)
+    await mintFBeets(carol, thirdLockAmount)
+    await fBeets.connect(carol).approve(locker.address, thirdLockAmount)
+    await locker.connect(carol).lock(carol.address, thirdLockAmount)
+
+    /*
+      now we should be able to kick alice out with an incentive of 2 epochs for first lock amount
+      and 1 epoch for second lock amount
+    */
     await locker.connect(alice).kickExpiredLocks(carol.address)
     // so the reward is lockAmount * epochs overdue * kick reward per epoch / kick reward denominator
-    const rewardAfter3Epochs = lockAmount.mul(3).mul(kickRewardPerEpoch).div(kickRewardDenominator)
+    const rewardAlice = carolFirstLockAmount
+      .mul(2)
+      .mul(kickRewardPerEpoch)
+      .div(kickRewardDenominator)
+      .add(carolSecondLockAmount.mul(1).mul(kickRewardPerEpoch).div(kickRewardDenominator))
 
-    expect(await fBeets.balanceOf(carol.address)).to.equal(lockAmount.sub(rewardAfter3Epochs))
-    expect(await fBeets.balanceOf(alice.address)).to.equal(rewardAfter1Epoch.add(rewardAfter3Epochs))
+    expect(await fBeets.balanceOf(carol.address)).to.equal(carolFirstLockAmount.add(carolSecondLockAmount).sub(rewardAlice))
+    expect(await fBeets.balanceOf(alice.address)).to.equal(rewardAfter1Epoch.add(rewardAlice))
+  })
+
+  it("allows owner to recover erc20 tokens on contract which are not reward tokens", async () => {
+    /*
+        there is an emergency hook to recover erc20 tokens which are not part of the rewards
+     */
+
+    const someErc20 = await deployERC20Mock("Some token", "ST", 200)
+    const erc20Amount = bn(200)
+
+    await someErc20.transfer(locker.address, erc20Amount)
+
+    await locker.recoverERC20(someErc20.address, erc20Amount)
+    expect(await someErc20.balanceOf(owner.address)).to.equal(erc20Amount)
+  })
+
+  it("reverts when trying to withdraw a reward token", async () => {
+    const { rewardToken } = await aRewardToken()
+    const rewardAmount = bn(100)
+
+    await locker.addReward(rewardToken.address, rewarder.address)
+
+    await rewardToken.connect(rewarder).approve(locker.address, rewardAmount)
+    await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, rewardAmount)
+
+    await expect(locker.recoverERC20(rewardToken.address, rewardAmount)).to.be.revertedWith("Cannot withdraw reward token")
+  })
+
+  it("reverts when trying to withdraw the locking token", async () => {
+    const lockAmount = bn(100)
+    await mintFBeets(bob, lockAmount)
+    await fBeets.connect(bob).approve(locker.address, lockAmount)
+    await locker.connect(bob).lock(bob.address, lockAmount)
+    await expect(locker.recoverERC20(fBeets.address, lockAmount)).to.be.revertedWith("Cannot withdraw locking token")
   })
 
   async function aRewardToken(tokenRewarder: SignerWithAddress = rewarder, supply: number = 10_000) {

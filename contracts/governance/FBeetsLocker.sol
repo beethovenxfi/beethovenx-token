@@ -248,7 +248,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return _rewardPerToken(_rewardsToken);
     }
 
-
     // Address and claimable amount of all reward tokens for the given account
     function claimableRewards(address _account)
         external
@@ -723,14 +722,13 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         emit RewardAdded(_rewardsToken, _reward);
     }
 
-    // Added to support recovering LP Rewards from other systems such as BAL to be distributed to holders
     function recoverERC20(address _tokenAddress, uint256 _tokenAmount)
         external
         onlyOwner
     {
         require(
             _tokenAddress != address(lockingToken),
-            "Cannot withdraw staking token"
+            "Cannot withdraw locking token"
         );
         require(
             rewardData[_tokenAddress].lastUpdateTime == 0,
