@@ -206,11 +206,13 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         }
 
         Reward memory reward = rewardData[_rewardsToken];
-        uint256 remainingTime = _lastTimeRewardApplicable(reward.periodFinish) -
-            reward.lastUpdateTime;
+        uint256 secondsSinceLastApplicableRewardTime = _lastTimeRewardApplicable(
+                reward.periodFinish
+            ) - reward.lastUpdateTime;
         return
             reward.rewardPerTokenStored +
-            (((remainingTime * reward.rewardRate) * 1e18) / totalLockedSupply);
+            (((secondsSinceLastApplicableRewardTime * reward.rewardRate) *
+                1e18) / totalLockedSupply);
     }
 
     function _earned(

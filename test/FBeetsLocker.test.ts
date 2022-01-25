@@ -10,6 +10,7 @@ import {
   deployContract,
   deployERC20Mock,
   latest,
+  setAutomineBlocks,
 } from "./utilities"
 import { ethers } from "hardhat"
 import { BeetsBar, ERC20Mock, FBeetsLocker } from "../types"
@@ -44,7 +45,7 @@ describe("fBeets locking contract", function () {
   })
 
   beforeEach(async function () {
-    bpt = await deployERC20Mock("BEETS_FTM", "BPT", bn(10000))
+    bpt = await deployERC20Mock("BEETS_FTM", "BPT", 10000)
     fBeets = await deployContract("BeetsBar", [bpt.address])
     locker = await deployContract<FBeetsLocker>("FBeetsLocker", [fBeets.address, EPOCH_DURATION, LOCK_DURATION])
   })
@@ -663,7 +664,7 @@ describe("fBeets locking contract", function () {
            - sets the period finish to the current time
            - whitelists the reward distributor
        */
-    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", 10_000)
     const transaction = await locker.addReward(rewardToken.address, rewarder.address)
     const blockTime = await getBlockTime(transaction.blockHash!)
     const rewardData = await locker.rewardData(rewardToken.address)
@@ -674,12 +675,12 @@ describe("fBeets locking contract", function () {
   })
 
   it("rejects adding of reward if sender is not owner", async () => {
-    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", 10_000)
     await expect(locker.connect(bob).addReward(rewardToken.address, rewarder.address)).to.be.revertedWith("Ownable: caller is not the owner")
   })
 
   it("rejects if reward token has already been added", async () => {
-    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", 10_000)
     await locker.addReward(rewardToken.address, rewarder.address)
     await expect(locker.addReward(rewardToken.address, rewarder.address)).to.be.revertedWith("Reward token already added")
   })
@@ -693,7 +694,7 @@ describe("fBeets locking contract", function () {
     /*
         we can black / whitelist reward distributors
      */
-    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", 10_000)
     await locker.addReward(rewardToken.address, rewarder.address)
     await locker.approveRewardDistributor(rewardToken.address, rewarder.address, false)
     expect(await locker.rewardDistributors(rewardToken.address, rewarder.address)).to.be.false
@@ -705,7 +706,7 @@ describe("fBeets locking contract", function () {
     /*
         there can also be multiple reward distributors for the same reward token
      */
-    const rewardToken = await deployERC20Mock("RewardToken", "REW", bn(10_000))
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", 10_000)
     await locker.addReward(rewardToken.address, rewarder.address)
     await locker.approveRewardDistributor(rewardToken.address, anotherRewarder.address, true)
     expect(await locker.rewardDistributors(rewardToken.address, rewarder.address)).to.be.true
@@ -719,14 +720,231 @@ describe("fBeets locking contract", function () {
     )
   })
 
+  it("initializes the reward data correctly on first reward distribution", async () => {
+    /*
+
+        We expect
+         - updates the reward rate to amount / epoch since its the first reward
+         - updates last updated & reward period finish timestamp to block time + epoch duration
+         - sets the reward per token to 0
+     */
+    const { rewardToken } = await aRewardToken()
+    const rewardAmount = bn(100)
+    await locker.addReward(rewardToken.address, rewarder.address)
+    await rewardToken.connect(rewarder).approve(locker.address, rewardAmount)
+
+    const tx = await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, rewardAmount)
+    const blockTime = await getBlockTime(tx.blockHash!)
+
+    const rewardData = await locker.rewardData(rewardToken.address)
+    expect(rewardData.lastUpdateTime).to.equal(blockTime)
+    expect(rewardData.periodFinish).to.equal(blockTime.add(EPOCH_DURATION))
+    expect(rewardData.rewardRate).to.equal(rewardAmount.div(EPOCH_DURATION))
+    expect(rewardData.rewardPerTokenStored).to.equal(0)
+    expect(await rewardToken.balanceOf(locker.address)).to.equal(rewardAmount)
+  })
+
+  it("transfer funds on reward distribution to locker contract", async () => {
+    const { rewardToken, totalSupply } = await aRewardToken()
+    const rewardAmount = bn(100)
+    await locker.addReward(rewardToken.address, rewarder.address)
+    await rewardToken.connect(rewarder).approve(locker.address, rewardAmount)
+    await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, rewardAmount)
+    expect(await rewardToken.balanceOf(locker.address)).to.equal(rewardAmount)
+    expect(await rewardToken.balanceOf(rewarder.address)).to.equal(totalSupply.sub(rewardAmount))
+  })
+
+  it("emits event when rewards are distributed", async () => {
+    const { rewardToken, totalSupply } = await aRewardToken()
+    const rewardAmount = bn(100)
+    await locker.addReward(rewardToken.address, rewarder.address)
+    await rewardToken.connect(rewarder).approve(locker.address, rewardAmount)
+    await expect(locker.connect(rewarder).notifyRewardAmount(rewardToken.address, rewardAmount))
+      .to.emit(locker, "RewardAdded")
+      .withArgs(rewardToken.address, rewardAmount)
+  })
+
+  it("adjusts the reward data accordingly in case of multiple reward distributions in the same reward period", async () => {
+    /*
+        in case a rewarder distributes multiple times before the reward period has finished, we expect it
+          - to extend the reward period for another epoch duration
+          - to adjust the reward rate according to the remaining amount + new reward amount
+          - updates the reward per token until the current timestamp for the previous reward rate
+     */
+
+    // first we need to lock some fBeets so the reward per token is calculated
+    const lockAmount = bn(200)
+    await mintFBeets(bob, lockAmount)
+    await fBeets.connect(bob).approve(locker.address, lockAmount)
+    await locker.connect(bob).lock(bob.address, lockAmount)
+    // now prepare the rewards
+    const { rewardToken } = await aRewardToken()
+    const firstRewardAmount = bn(100)
+    const secondRewardAmount = bn(100)
+    const totalRewardAmount = firstRewardAmount.add(secondRewardAmount)
+
+    await locker.addReward(rewardToken.address, rewarder.address)
+
+    await rewardToken.connect(rewarder).approve(locker.address, totalRewardAmount)
+    const firstDistributionTx = await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, firstRewardAmount)
+    const firstDistributionBlockTime = await getBlockTime(firstDistributionTx.blockHash!)
+
+    // now we advance for half an epoch
+    await advanceTime(EPOCH_DURATION / 2)
+    const secondDistributionTx = await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, secondRewardAmount)
+    const secondDistributionBlockTime = await getBlockTime(secondDistributionTx.blockHash!)
+
+    /*
+      now we expect
+       - last updated time the block time of second reward
+       - reward end period to be block time of second reward + epoch duration
+       - reward rate: (remaining rewards + second rewards) / epoch duration
+       - reward per token updated with first distribution reward rate until second distribution time
+     */
+
+    const remainingRewardsOfFirstDistribution = firstDistributionBlockTime
+      .add(EPOCH_DURATION)
+      .sub(secondDistributionBlockTime)
+      .mul(firstRewardAmount.div(EPOCH_DURATION))
+    const expectedRewardRateAfterSecondDistribution = remainingRewardsOfFirstDistribution.add(secondRewardAmount).div(EPOCH_DURATION)
+
+    const rewardData = await locker.rewardData(rewardToken.address)
+    expect(rewardData.lastUpdateTime).to.equal(secondDistributionBlockTime)
+    expect(rewardData.periodFinish).to.equal(secondDistributionBlockTime.add(EPOCH_DURATION))
+    expect(rewardData.rewardRate).to.equal(expectedRewardRateAfterSecondDistribution)
+
+    expect(rewardData.rewardPerTokenStored).to.equal(
+      firstRewardAmount
+        .div(EPOCH_DURATION)
+        .mul(EPOCH_DURATION / 2)
+        .mul(bn(1))
+        .div(lockAmount)
+    )
+  })
+
+  it("distributes rewards to users according to their total balance", async () => {
+    /*
+      tokens are distributed according to the total balance of locked tokens. also expired and tokens of the current
+      epoch count towards it in contrary to the voting (balanceOf).
+
+      Our test scenario will be that bob enters first with some amount, then after an epoch, alice enters with the
+      same amount and finally bob enters again with some more.
+     */
+    const bobTotalAmount = bn(400)
+    const bobFirstLockAmount = bobTotalAmount.div(2)
+    const bobSecondLockAmount = bobTotalAmount.div(2)
+    await mintFBeets(bob, bobTotalAmount)
+    await fBeets.connect(bob).approve(locker.address, bobTotalAmount)
+    await locker.connect(bob).lock(bob.address, bobFirstLockAmount)
+
+    const aliceLockAmount = bn(200)
+    await mintFBeets(alice, aliceLockAmount)
+    await fBeets.connect(alice).approve(locker.address, aliceLockAmount)
+    // now prepare the rewards
+    const { rewardToken } = await aRewardToken()
+    const firstRewardAmount = bn(100)
+    const secondRewardAmount = bn(100)
+    const totalRewardAmount = firstRewardAmount.add(secondRewardAmount)
+
+    await locker.addReward(rewardToken.address, rewarder.address)
+
+    await rewardToken.connect(rewarder).approve(locker.address, totalRewardAmount)
+    const firstDistributionTx = await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, firstRewardAmount)
+    const firstDistributionBlockTime = await getBlockTime(firstDistributionTx.blockHash!)
+
+    await advanceTime(EPOCH_DURATION / 4)
+
+    // now alice enters the game
+    const tx = await locker.connect(alice).lock(alice.address, aliceLockAmount)
+    const aliceEnteringBlockTime = await getBlockTime(tx.blockHash!)
+
+    // now lets figure out the claimable rewards for bob until the lock of alice
+    const firstRewardDuration = aliceEnteringBlockTime.sub(firstDistributionBlockTime)
+    const rewardDataFirstDistribution = await locker.rewardData(rewardToken.address)
+    const firstRewardRate = rewardDataFirstDistribution.rewardRate
+    const bobRewardsUntilAliceLock = await locker.claimableRewards(bob.address)
+    expect(bobRewardsUntilAliceLock[0].token).to.equal(rewardToken.address)
+    expect(bobRewardsUntilAliceLock[0].amount).to.equal(firstRewardDuration.mul(firstRewardRate))
+
+    await advanceTime(EPOCH_DURATION / 4)
+
+    // now we add some more rewards
+    const secondDistributionTx = await locker.connect(rewarder).notifyRewardAmount(rewardToken.address, secondRewardAmount)
+    const secondDistributionBlockTime = await getBlockTime(secondDistributionTx.blockHash!)
+
+    await advanceTime(EPOCH_DURATION / 4)
+
+    // now bob locks more
+    const bobSecondLockTx = await locker.connect(bob).lock(bob.address, bobSecondLockAmount)
+    const bobSecondLockBlockTime = await getBlockTime(bobSecondLockTx.blockHash!)
+
+    await advanceTime(EPOCH_DURATION / 4)
+    // we want to get rewards on same block for bob & alice to make calculations easier
+    await setAutomineBlocks(false)
+    await locker.connect(bob).getReward(bob.address)
+    await locker.connect(alice).getReward(alice.address)
+    await advanceBlock()
+    await setAutomineBlocks(true)
+    const getRewardBlockTime = await latest()
+    /*
+        so now lets try to wrap our head around what alice and bob should have. Bob gets the full reward rate
+        until alice locks the same amount. from alices' lock until second reward distribution, both get half of the
+        reward rate. After the second reward distribution, both still get half of the reward rate, but the reward
+        reate has increased. After the second lock of bob, alice only gets 1/3 of the reward rate
+
+        bob:
+          (lockOfAliceTs - firstRewardTs) * firstRewardRate +
+            (secondRewardTs - lockOfAliceTs) * (firstRewardRate / 2) +
+              (secondLockOfBobTs - secondRewardTs) * (secondRewardRate / 2) +
+                (getRewardTs - secondLockOfBobTs) * (secondRewardRate * 2/3)
+
+        => 151200 * 165343915343915 + 151200 * 165343915343915/2 + 151200 * 248015873015872 /2 + 151200 * 248015873015872 * 2/3
+
+       alice:
+          (secondRewardTs - lockOfAliceTs) * (firstRewardRate /2) +
+            (secondLockOfBobTs - secondRewardTs) * (secondRewardRate / 2) +
+              (getRewardTs - secondLockOfBobTs) * (secondRewardRate / 3)
+     */
+
+    const rewardDataSecondDistribution = await locker.rewardData(rewardToken.address)
+    const secondRewardRate = rewardDataSecondDistribution.rewardRate
+
+    const firstPeriod = aliceEnteringBlockTime.sub(firstDistributionBlockTime)
+    const secondPeriod = secondDistributionBlockTime.sub(aliceEnteringBlockTime)
+    const thirdPeriod = bobSecondLockBlockTime.sub(secondDistributionBlockTime)
+    const fourthPeriod = getRewardBlockTime.sub(bobSecondLockBlockTime)
+
+    const expectedBobAmount = firstPeriod
+      .mul(firstRewardRate)
+      .add(secondPeriod.mul(firstRewardRate).mul(bn(1)).div(2).div(bn(1)))
+      .add(thirdPeriod.mul(secondRewardRate).mul(bn(1)).div(2).div(bn(1)))
+      .add(fourthPeriod.mul(secondRewardRate).mul(bn(1)).div(3).mul(2).div(bn(1)))
+
+    const expectedAliceAmount = secondPeriod
+      .mul(firstRewardRate)
+      .mul(bn(1))
+      .div(2)
+      .div(bn(1))
+      .add(thirdPeriod.mul(secondRewardRate).mul(bn(1)).div(2).div(bn(1)))
+      .add(fourthPeriod.mul(secondRewardRate).mul(bn(1)).div(3).div(bn(1)))
+
+    console.log([firstPeriod.toString(), secondPeriod.toString(), thirdPeriod.toString(), fourthPeriod.toString()])
+    // ATTENTION: this test fails some times when the periods are not exactly EPOCH / 4 = (151200) cause of rounding errors
+    expect(await rewardToken.balanceOf(bob.address)).to.equal(expectedBobAmount)
+    expect(await rewardToken.balanceOf(alice.address)).to.equal(expectedAliceAmount)
+  })
+
   it("allows to kick out expired locks after 4 epochs since lock has expired for a small reward", async () => {
     /*
 
      */
   })
 
-  function aLockedBalance(lockedAmount: BigNumber, unlockTime: number) {
-    return { locked: lockedAmount, unlockTime: bn(unlockTime, 0) }
+  async function aRewardToken(tokenRewarder: SignerWithAddress = rewarder, supply: number = 10_000) {
+    const rewardToken = await deployERC20Mock("RewardToken", "REW", supply)
+    await rewardToken.connect(owner).transfer(rewarder.address, bn(supply))
+
+    return { rewardToken, totalSupply: bn(supply) }
   }
 
   async function mintFBeets(user: SignerWithAddress, amount: BigNumber) {
