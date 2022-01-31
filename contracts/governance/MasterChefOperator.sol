@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "./Timelock.sol";
 import "../interfaces/IRewarder.sol";
-import "hardhat/console.sol";
 
 contract MasterChefOperator is AccessControl {
     using EnumerableSet for EnumerableSet.UintSet;
