@@ -1,4 +1,15 @@
-import { advanceTime, bn, deployChef, deployContract, deployERC20Mock, duration, latest } from "./utilities"
+import {
+  advanceBlock,
+  advanceBlockRelativeTo,
+  advanceTime,
+  bn,
+  deployChef,
+  deployContract,
+  deployERC20Mock,
+  duration,
+  latest,
+  setAutomineBlocks,
+} from "./utilities"
 import { ethers } from "hardhat"
 import { BeethovenxMasterChef, BeethovenxToken, MasterChefOperator, TimeBasedMasterChefRewarder, Timelock } from "../types"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
@@ -35,6 +46,7 @@ describe("MasterChefOperator", function () {
     rewarder = await deployContract("TimeBasedMasterChefRewarder", [beets.address, bn(1), chef.address])
 
     operator = await deployContract("MasterChefOperator", [timelock.address, chef.address, admin.address, stagingAdmin.address])
+
     await timelock.connect(admin).setPendingAdmin(operator.address)
     await operator.connect(admin).acceptTimelockAdmin()
   })
@@ -42,26 +54,30 @@ describe("MasterChefOperator", function () {
   it("batches farm modifications", async () => {
     const lpToken = await deployERC20Mock("some token", "st", bn(1000))
     const anotherLpToken = await deployERC20Mock("another token", "at", bn(1000))
-    const yetAnotherLpToken = await deployERC20Mock("yet another token", "at", bn(1000))
+    const yetAnotherLpToken = await deployERC20Mock("yet another token", "yat", bn(1000))
+    const lastLpToken = await deployERC20Mock("last token", "lt", bn(1000))
 
-    const etaFarmAdd = await createEta()
+    const etaFirstModification = await createEta()
     await operator.connect(stagingAdmin).stageFarmAdditions(
       [
         { lpToken: beets.address, allocationPoints: 10, rewarder: ethers.constants.AddressZero },
         { lpToken: lpToken.address, allocationPoints: 20, rewarder: rewarder.address },
         { lpToken: anotherLpToken.address, allocationPoints: 30, rewarder: ethers.constants.AddressZero },
       ],
-      etaFarmAdd
+      etaFirstModification
     )
 
     await operator
       .connect(stagingAdmin)
-      .stageFarmAdditions([{ lpToken: yetAnotherLpToken.address, allocationPoints: 40, rewarder: ethers.constants.AddressZero }], etaFarmAdd)
+      .stageFarmAdditions(
+        [{ lpToken: yetAnotherLpToken.address, allocationPoints: 40, rewarder: ethers.constants.AddressZero }],
+        etaFirstModification
+      )
 
-    const farmAddTx0 = await operator.farmAdditions(etaFarmAdd, 0)
-    const farmAddTx1 = await operator.farmAdditions(etaFarmAdd, 1)
-    const farmAddTx2 = await operator.farmAdditions(etaFarmAdd, 2)
-    const farmAddTx3 = await operator.farmAdditions(etaFarmAdd, 3)
+    const farmAddTx0 = await operator.farmAdditions(etaFirstModification, 0)
+    const farmAddTx1 = await operator.farmAdditions(etaFirstModification, 1)
+    const farmAddTx2 = await operator.farmAdditions(etaFirstModification, 2)
+    const farmAddTx3 = await operator.farmAdditions(etaFirstModification, 3)
 
     expect(farmAddTx0.lpToken).to.equal(beets.address)
     expect(farmAddTx0.allocationPoints).to.equal(10)
@@ -80,12 +96,12 @@ describe("MasterChefOperator", function () {
     expect(farmAddTx3.rewarder).to.equal(ethers.constants.AddressZero)
 
     // lets queue it up
-    await operator.connect(admin).commitFarmChanges(etaFarmAdd, 0)
+    await operator.connect(admin).commitFarmChanges(etaFirstModification, 0)
 
     await advanceTime(duration.hours("10").toNumber())
 
     // and execute it
-    await operator.connect(admin).commitFarmChanges(etaFarmAdd, 1)
+    await operator.connect(admin).commitFarmChanges(etaFirstModification, 1)
 
     expect(await chef.poolLength()).to.equal(4)
 
@@ -109,9 +125,9 @@ describe("MasterChefOperator", function () {
     expect(poolInfo3.allocPoint).to.equal(40)
     expect(await chef.rewarder(3)).to.equal(ethers.constants.AddressZero)
 
-    // now lets edit some farms
+    // now lets edit some farms & also add a new one
 
-    const etaFarmEdit = await createEta()
+    const etaSecondModification = await createEta()
     await operator.connect(stagingAdmin).stageFarmModifications(
       [
         {
@@ -121,7 +137,7 @@ describe("MasterChefOperator", function () {
           overwriteRewarder: false,
         },
       ],
-      etaFarmEdit
+      etaSecondModification
     )
 
     await operator.connect(stagingAdmin).stageFarmModifications(
@@ -133,11 +149,23 @@ describe("MasterChefOperator", function () {
           overwriteRewarder: true,
         },
       ],
-      etaFarmEdit
+      etaSecondModification
     )
 
-    const farmEditTx0 = await operator.farmModifications(etaFarmEdit, 0)
-    const farmEditTx1 = await operator.farmModifications(etaFarmEdit, 1)
+    await operator.connect(stagingAdmin).stageFarmAdditions(
+      [
+        {
+          lpToken: lastLpToken.address,
+          allocationPoints: 10,
+          rewarder: ethers.constants.AddressZero,
+        },
+      ],
+      etaSecondModification
+    )
+
+    const farmEditTx0 = await operator.farmModifications(etaSecondModification, 0)
+    const farmEditTx1 = await operator.farmModifications(etaSecondModification, 1)
+    const farmAddTx4 = await operator.farmAdditions(etaSecondModification, 0)
 
     expect(farmEditTx0.pid).to.equal(0)
     expect(farmEditTx0.allocationPoints).to.equal(5)
@@ -149,13 +177,17 @@ describe("MasterChefOperator", function () {
     expect(farmEditTx0.rewarder).to.equal(ethers.constants.AddressZero)
     expect(farmEditTx1.overwriteRewarder).to.equal(true)
 
+    expect(farmAddTx4.lpToken).to.equal(lastLpToken.address)
+    expect(farmAddTx4.allocationPoints).to.equal(10)
+    expect(farmAddTx4.rewarder).to.equal(ethers.constants.AddressZero)
+
     // lets queue it up
-    await operator.connect(admin).commitFarmChanges(etaFarmEdit, 0)
+    await operator.connect(admin).commitFarmChanges(etaSecondModification, 0)
 
     await advanceTime(duration.hours("10").toNumber())
 
     // and execute it
-    await operator.connect(admin).commitFarmChanges(etaFarmEdit, 1)
+    await operator.connect(admin).commitFarmChanges(etaSecondModification, 1)
 
     const poolInfo0AfterEdit = await chef.poolInfo(0)
     expect(poolInfo0AfterEdit.allocPoint).to.equal(5)
@@ -164,6 +196,11 @@ describe("MasterChefOperator", function () {
     const poolInfo1AfterEdit = await chef.poolInfo(1)
     expect(poolInfo1AfterEdit.allocPoint).to.equal(2)
     expect(await chef.rewarder(1)).to.equal(ethers.constants.AddressZero)
+
+    expect(await chef.lpTokens(4)).to.equal(lastLpToken.address)
+    const poolInfo4 = await chef.poolInfo(4)
+    expect(poolInfo4.allocPoint).to.equal(10)
+    expect(await chef.rewarder(4)).to.equal(ethers.constants.AddressZero)
   })
 
   it("only allows users with role STAGING to stage farm changes", async () => {
