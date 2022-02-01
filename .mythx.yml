@@ -13,4 +13,6 @@ analyze:
         - contracts/token/BeethovenxToken.sol:BeethovenxToken
         - contracts/token/BeethovenxMasterChef.sol:BeethovenxMasterChef
         - contracts/governance/Timelock.sol:Timelock
+        - contracts/governance/MasterChefOperator.sol:MasterChefOperator
+        - contracts/governance/FBeetsLocker.sol:FBeetsLocker
         - contracts/vesting/MasterChefLpTokenTimelock.sol:MasterChefLpTokenTimelock

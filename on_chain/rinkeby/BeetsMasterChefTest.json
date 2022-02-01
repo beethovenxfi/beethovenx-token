@@ -1,0 +1,11 @@
+{
+  "contract": "BeethovenxMasterChef",
+  "address": "0x51444a9D2E4f0740AD63918CA7F4F6a934cbe147",
+  "args": [
+    "0xF96427079E58eaA5cc334D7213B8280B6Eab8433",
+    "0xfd5a3ec3e69ff2b44b6f1fbc168ba2147e241d24",
+    "4000000000000000000",
+    "10087926"
+  ],
+  "verified": true
+}

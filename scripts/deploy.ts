@@ -29,7 +29,7 @@ async function deployAndVerify() {
   ])
 
   const { contractName, args, id } = answers
-  const argsList = args.split(",")
+  const argsList = args.length > 0 ? args.split(",") : []
 
   const baseDir = path.join(process.cwd(), "on_chain", network)
   const fileName = `${id}.json`
