@@ -37,7 +37,7 @@ contract MasterChefOperator is AccessControl {
     // eta's which have already been used
     mapping(uint256 => bool) public usedFarmChangeEtas;
 
-    EnumerableSet.UintSet private _farmModificationEtas;
+    EnumerableSet.UintSet private _queuedFarmChangeEtas;
 
     Timelock public immutable timelock;
     address public immutable masterChef;
@@ -228,13 +228,60 @@ contract MasterChefOperator is AccessControl {
         }
     }
 
-    function farmModificationEtas() external view returns (uint256[] memory) {
-        return _farmModificationEtas.values();
+    function queuedFarmChangeEtas() external view returns (uint256[] memory) {
+        return _queuedFarmChangeEtas.values();
+    }
+
+    function farmAdditionsForEta(uint256 eta)
+        external
+        view
+        returns (FarmAddition[] memory)
+    {
+        return farmAdditions[eta];
+    }
+
+    function farmModificationsForEta(uint256 eta)
+        external
+        view
+        returns (FarmModification[] memory)
+    {
+        return farmModifications[eta];
+    }
+
+
+    function queueTransaction(
+        address target,
+        uint256 value,
+        string memory signature,
+        bytes memory data,
+        uint256 eta
+    ) public onlyRole(COMMIT_ROLE) returns (bytes32) {
+        return timelock.queueTransaction(target, value, signature, data, eta);
+    }
+
+    function cancelTransaction(
+        address target,
+        uint256 value,
+        string memory signature,
+        bytes memory data,
+        uint256 eta
+    ) public onlyRole(COMMIT_ROLE) {
+        return timelock.cancelTransaction(target, value, signature, data, eta);
+    }
+
+    function executeTransaction(
+        address target,
+        uint256 value,
+        string memory signature,
+        bytes memory data,
+        uint256 eta
+    ) public payable onlyRole(COMMIT_ROLE) returns (bytes memory) {
+        return timelock.executeTransaction(target, value, signature, data, eta);
     }
 
     modifier updateEtas(uint256 eta) {
         require(!usedFarmChangeEtas[eta], "ETA already used, chose other eta");
-        _farmModificationEtas.add(eta);
+        _queuedFarmChangeEtas.add(eta);
         _;
     }
 }
