@@ -51,7 +51,7 @@ contract BeetsVoting is Ownable {
     /// @param delegate Address of delegate
     function setDelegate(address delegate) external {
         require(delegate != msg.sender, "Cannot delegate to self");
-        require(delegate != address(0), "Can't delegate to 0x0");
+        require(delegate != address(0), "Cannot delegate to 0x0");
 
         VoteDelegation storage currentDelegation = voteDelegations[msg.sender];
 
@@ -60,7 +60,7 @@ contract BeetsVoting is Ownable {
             "Already delegated to this address"
         );
 
-        // if his votes are already delegated, we need to ensure that the minimum delegation time has been passed
+        // if his votes are already delegated, we need to ensure that the minimum delegation time has passed
         require(
             currentDelegation.minDelegationTime == 0 ||
                 currentDelegation.minDelegationTime <= block.timestamp,
@@ -69,7 +69,7 @@ contract BeetsVoting is Ownable {
 
         // ok we are good to delegate those votes, first we have to remove it from the previous delegate if it exists
         if (currentDelegation.delegate != address(0)) {
-            _delegations[msg.sender].remove(msg.sender);
+            _delegations[currentDelegation.delegate].remove(msg.sender);
             emit ClearDelegate(msg.sender, currentDelegation.delegate);
         }
         // now we create a new vote delegation for the delegate and the minimum delegation duration
@@ -92,23 +92,22 @@ contract BeetsVoting is Ownable {
         );
 
         // remove it from the delegate
-        _delegations[msg.sender].remove(msg.sender);
-
+        _delegations[currentDelegation.delegate].remove(msg.sender);
+        emit ClearDelegate(msg.sender, currentDelegation.delegate);
         // and clear the delegation entry
         voteDelegations[msg.sender] = VoteDelegation(address(0), 0);
-        emit ClearDelegate(msg.sender, currentDelegation.delegate);
     }
 
     /// @notice Voting power of sender plus delegated votes
-    function balanceOf() external view returns (uint256) {
+    function balanceOf(address user) external view returns (uint256) {
         // first we check if the user has delegated his votes
-        if (voteDelegations[msg.sender].delegate != address(0)) {
+        if (voteDelegations[user].delegate != address(0)) {
             return 0;
         }
         // if not, we take his balance and add the balance of all addresses which delegated
-        uint256 amount = locker.balanceOf(msg.sender);
+        uint256 amount = locker.balanceOf(user);
 
-        EnumerableSet.AddressSet storage delegates = _delegations[msg.sender];
+        EnumerableSet.AddressSet storage delegates = _delegations[user];
 
         for (uint256 i = 0; i < delegates.length(); i++) {
             amount += locker.balanceOf(delegates.at(i));
