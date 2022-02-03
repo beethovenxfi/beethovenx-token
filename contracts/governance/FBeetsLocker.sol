@@ -102,8 +102,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     bool public isShutdown = false;
 
     //erc20-like interface
-    string private constant _name = "Vote Locked fBeets Token";
-    string private constant _symbol = "vfBeets";
+    string private constant _name = "Locked fBeets Token";
+    string private constant _symbol = "lfBeets";
     uint8 private constant _decimals = 18;
 
     constructor(
