@@ -4,7 +4,7 @@ pragma solidity 0.8.7;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // for simplicity, we group the vault and the pool into 1
-interface IBalancerPool is IERC20 {
+interface IBalancerVault is IERC20 {
     enum JoinKind {
         INIT,
         EXACT_TOKENS_IN_FOR_BPT_OUT,

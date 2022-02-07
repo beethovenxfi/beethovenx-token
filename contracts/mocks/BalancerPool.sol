@@ -2,9 +2,9 @@
 pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "../interfaces/IBalancerPool.sol";
+import "../interfaces/IBalancerVault.sol";
 
-contract BalancerPool is IBalancerPool, ERC20("BalancerToken", "BPT") {
+contract BalancerPool is IBalancerVault, ERC20("BalancerToken", "BPT") {
     constructor(uint256 initialSupply) {
         _mint(msg.sender, initialSupply);
     }

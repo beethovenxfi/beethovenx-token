@@ -77,8 +77,10 @@ describe("BeetsBar", function () {
     const sharer: FBeetsRevenueSharer = await deployFBeetsSharer()
 
     await chef.add(10, sharer.address, ethers.constants.AddressZero)
+    // we need to add the sharer as a rewarder to the locker
+    await locker.addReward(beets.address, sharer.address)
     await sharer.depositToChef()
-    await sharer.withdrawFromChef()
+    await sharer.withdrawAndDistribute()
     expect(await sharer.totalSupply()).to.equal(0)
     const userInfo = await chef.userInfo(0, sharer.address)
     expect(userInfo.amount).to.equal(0)
@@ -89,8 +91,8 @@ describe("BeetsBar", function () {
 
     await chef.add(10, sharer.address, ethers.constants.AddressZero)
     await sharer.depositToChef()
-    await expect(sharer.connect(bob).withdrawFromChef()).to.be.revertedWith("AccessControl")
-    await expect(sharer.connect(alice).withdrawFromChef()).to.be.revertedWith("AccessControl")
+    await expect(sharer.connect(bob).withdrawAndDistribute()).to.be.revertedWith("AccessControl")
+    await expect(sharer.connect(alice).withdrawAndDistribute()).to.be.revertedWith("AccessControl")
   })
 
   it("distributes 50% of the harvested emissions as beets to the locker", async () => {

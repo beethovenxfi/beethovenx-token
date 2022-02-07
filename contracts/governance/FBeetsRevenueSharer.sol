@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./BeetsBar.sol";
 import "../token/BeethovenxMasterChef.sol";
 import "./FBeetsLocker.sol";
-import "../interfaces/IBalancerPool.sol";
+import "../interfaces/IBalancerVault.sol";
 
 contract FBeetsRevenueSharer is
     ERC20("FBEETS REVENUE", "rfBEETS"),
@@ -28,7 +28,7 @@ contract FBeetsRevenueSharer is
     BeetsBar public beetsBar;
     FBeetsLocker public locker;
 
-    IBalancerPool public vault;
+    IBalancerVault public vault;
     bytes32 public fidelioDuettoPoolId;
 
     constructor(
@@ -38,7 +38,7 @@ contract FBeetsRevenueSharer is
         FBeetsLocker _locker,
         BeethovenxMasterChef _chef,
         uint256 _farmPid,
-        IBalancerPool _vault,
+        IBalancerVault _vault,
         bytes32 _balancerPoolId,
         address admin
     ) {
@@ -73,40 +73,42 @@ contract FBeetsRevenueSharer is
     }
 
     function _distribute() internal {
-        // 50% of the rewards go to locked fBeets holders
-        uint256 rewardsForLockedFBeets = beets.balanceOf(address(this)) / 2;
-        beets.approve(address(locker), rewardsForLockedFBeets);
-        locker.notifyRewardAmount(address(beets), rewardsForLockedFBeets);
+        if (beets.balanceOf(address(this)) > 0) {
+            // 50% of the rewards go to locked fBeets holders
+            uint256 rewardsForLockedFBeets = beets.balanceOf(address(this)) / 2;
+            beets.approve(address(locker), rewardsForLockedFBeets);
+            locker.notifyRewardAmount(address(beets), rewardsForLockedFBeets);
 
-        // the other 50% we convert to fBeets and share with all fBeets holders
-        // we cannot assign fix size arrays to dynamic arrays, so we do this thing...
-        address[] memory assets = new address[](1);
-        assets[0] = address(beets);
-        uint256[] memory amountsIn = new uint256[](1);
-        amountsIn[0] = beets.balanceOf(address(this));
-        uint256 minBptOut = 0;
+            // the other 50% we convert to fBeets and share with all fBeets holders
+            // we cannot assign fix size arrays to dynamic arrays, so we do this thing...
+            address[] memory assets = new address[](1);
+            assets[0] = address(beets);
+            uint256[] memory amountsIn = new uint256[](1);
+            amountsIn[0] = beets.balanceOf(address(this));
+            uint256 minBptOut = 0;
 
-        vault.joinPool(
-            fidelioDuettoPoolId,
-            address(this),
-            address(this),
-            IBalancerPool.JoinPoolRequest(
-                assets,
-                amountsIn,
-                abi.encode(
-                    IBalancerPool.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT,
+            vault.joinPool(
+                fidelioDuettoPoolId,
+                address(this),
+                address(this),
+                IBalancerVault.JoinPoolRequest(
+                    assets,
                     amountsIn,
-                    minBptOut
-                ),
-                false
-            )
-        );
-        // now we take the resulting fidelioDuetteBpt's and share them via revenue to the beets bar
-        fidelioDuetteBpt.approve(
-            address(beetsBar),
-            fidelioDuetteBpt.balanceOf(address(this))
-        );
+                    abi.encode(
+                        IBalancerVault.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT,
+                        amountsIn,
+                        minBptOut
+                    ),
+                    false
+                )
+            );
+            // now we take the resulting fidelioDuetteBpt's and share them via revenue to the beets bar
+            fidelioDuetteBpt.approve(
+                address(beetsBar),
+                fidelioDuetteBpt.balanceOf(address(this))
+            );
 
-        beetsBar.shareRevenue(fidelioDuetteBpt.balanceOf(address(this)));
+            beetsBar.shareRevenue(fidelioDuetteBpt.balanceOf(address(this)));
+        }
     }
 }
