@@ -77,6 +77,7 @@ contract FBeetsRevenueSharer is
     }
 
     function setFBeetsLockerShare(uint256 newFBeetsLockerShare) external onlyRole(OPERATOR_ROLE){
+        require(newFBeetsLockerShare <= 1000, "Share cannot exceed 100%");
         fBeetsLockerShare = newFBeetsLockerShare;
     }
 
@@ -87,38 +88,40 @@ contract FBeetsRevenueSharer is
             beets.approve(address(locker), rewardsForLockedFBeets);
             locker.notifyRewardAmount(address(beets), rewardsForLockedFBeets);
 
-            // the rest we convert to fBeets and share with all fBeets holders
-            // we cannot assign fix size arrays to dynamic arrays, so we do this thing...
-            address[] memory assets = new address[](1);
-            assets[0] = address(beets);
-            uint256[] memory amountsIn = new uint256[](1);
-            amountsIn[0] = beets.balanceOf(address(this));
-            uint256 minBptOut = 0;
+            // Share is less than 100% so there will be left-over for non-lockers
+            if (fBeetsLockerShare < DENOMINATOR) {
+                // the rest we convert to fBeets and share with all fBeets holders
+                // we cannot assign fix size arrays to dynamic arrays, so we do this thing...
+                address[] memory assets = new address[](1);
+                assets[0] = address(beets);
+                uint256[] memory amountsIn = new uint256[](1);
+                amountsIn[0] = beets.balanceOf(address(this));
+                uint256 minBptOut = 0;
 
-            require(amountsIn[0] > 0, "No share for non-lockers left");
-
-            vault.joinPool(
-                fidelioDuettoPoolId,
-                address(this),
-                address(this),
-                IBalancerVault.JoinPoolRequest(
-                    assets,
-                    amountsIn,
-                    abi.encode(
-                        IBalancerVault.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT,
+                vault.joinPool(
+                    fidelioDuettoPoolId,
+                    address(this),
+                    address(this),
+                    IBalancerVault.JoinPoolRequest(
+                        assets,
                         amountsIn,
-                        minBptOut
-                    ),
-                    false
-                )
-            );
-            // now we take the resulting fidelioDuetteBpt's and share them via revenue to the beets bar
-            fidelioDuetteBpt.approve(
-                address(beetsBar),
-                fidelioDuetteBpt.balanceOf(address(this))
-            );
+                        abi.encode(
+                            IBalancerVault.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT,
+                            amountsIn,
+                            minBptOut
+                        ),
+                        false
+                    )
+                );
 
-            beetsBar.shareRevenue(fidelioDuetteBpt.balanceOf(address(this)));
+                // now we take the resulting fidelioDuetteBpt's and share them via revenue to the beets bar
+                fidelioDuetteBpt.approve(
+                    address(beetsBar),
+                    fidelioDuetteBpt.balanceOf(address(this))
+                );
+
+                beetsBar.shareRevenue(fidelioDuetteBpt.balanceOf(address(this)));
+            }
         }
     }
 }
