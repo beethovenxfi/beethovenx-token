@@ -200,7 +200,9 @@ describe("FBeetsRevenueSharer", function () {
     expect(await beets.balanceOf(alice.address)).to.equal(0)
   })
 
-  it("distributes 50% of the emissions to all fBeets holders in the form of fBeets revenue share", async () => {
+  it("distributes remaining share to all fBeets holders by accruing value", async () => {
+    // With the remaining beets (total emissions - locked share) we join single sided the fidelio duetto pool and share the resulting beets as revenue with fBeets holders 
+
     const sharer: FBeetsRevenueSharer = await deployFBeetsSharer()
     await chef.add(10, sharer.address, ethers.constants.AddressZero)
 
