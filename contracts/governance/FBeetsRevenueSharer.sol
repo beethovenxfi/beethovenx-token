@@ -22,6 +22,8 @@ contract FBeetsRevenueSharer is
 
     BeethovenxMasterChef public chef;
     uint256 public farmPid;
+    uint256 public fBeetsLockerShare;
+    uint256 public constant DENOMINATOR = 1000;
 
     IERC20 public fidelioDuetteBpt;
     IERC20 public beets;
@@ -38,6 +40,7 @@ contract FBeetsRevenueSharer is
         FBeetsLocker _locker,
         BeethovenxMasterChef _chef,
         uint256 _farmPid,
+        uint256 _fBeetsLockerShare,
         IBalancerVault _vault,
         bytes32 _balancerPoolId,
         address admin
@@ -48,6 +51,7 @@ contract FBeetsRevenueSharer is
         locker = _locker;
         chef = _chef;
         farmPid = _farmPid;
+        fBeetsLockerShare = _fBeetsLockerShare;
         vault = _vault;
         fidelioDuettoPoolId = _balancerPoolId;
         _setupRole(DEFAULT_ADMIN_ROLE, admin);
@@ -72,20 +76,26 @@ contract FBeetsRevenueSharer is
         _distribute();
     }
 
+    function setFBeetsLockerShare(uint256 newFBeetsLockerShare) external onlyRole(OPERATOR_ROLE){
+        fBeetsLockerShare = newFBeetsLockerShare;
+    }
+
     function _distribute() internal {
         if (beets.balanceOf(address(this)) > 0) {
-            // 50% of the rewards go to locked fBeets holders
-            uint256 rewardsForLockedFBeets = beets.balanceOf(address(this)) / 2;
+            // fBeetsLockerShare of the rewards go to locked fBeets holders
+            uint256 rewardsForLockedFBeets = beets.balanceOf(address(this)) * fBeetsLockerShare / DENOMINATOR;
             beets.approve(address(locker), rewardsForLockedFBeets);
             locker.notifyRewardAmount(address(beets), rewardsForLockedFBeets);
 
-            // the other 50% we convert to fBeets and share with all fBeets holders
+            // the rest we convert to fBeets and share with all fBeets holders
             // we cannot assign fix size arrays to dynamic arrays, so we do this thing...
             address[] memory assets = new address[](1);
             assets[0] = address(beets);
             uint256[] memory amountsIn = new uint256[](1);
             amountsIn[0] = beets.balanceOf(address(this));
             uint256 minBptOut = 0;
+
+            require(amountsIn[0] > 0, "No share for non-lockers left");
 
             vault.joinPool(
                 fidelioDuettoPoolId,

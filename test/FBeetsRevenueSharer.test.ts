@@ -5,9 +5,11 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 import { expect } from "chai"
 import { BigNumber } from "ethers"
 
-describe("BeetsBar", function () {
+describe("FBeetsRevenueSharer", function () {
   const EPOCH_DURATION = 86400 * 7
   const LOCK_DURATION = EPOCH_DURATION * 17
+
+  const INITIAL_FBEETSLOCKERSSHARE = 500
 
   let beets: BeethovenxToken
   let chef: BeethovenxMasterChef
@@ -123,6 +125,37 @@ describe("BeetsBar", function () {
     expect(await beets.balanceOf(bob.address)).to.be.closeTo(userInfo.rewardDebt.div(2), 200000)
   })
 
+  it("change fBeets locker share to 75%", async () => {
+    const sharer: FBeetsRevenueSharer = await deployFBeetsSharer()
+    await chef.add(10, sharer.address, ethers.constants.AddressZero)
+
+    // we need to add the sharer as a rewarder to the locker
+    await locker.addReward(beets.address, sharer.address)
+    // change the default share
+    await sharer.setFBeetsLockerShare(750)
+    // also we need someone to lock some fBeets
+    const lockAmount = bn(1, 0)
+    await mintFBeets(bob, lockAmount)
+    await beetsBar.connect(bob).approve(locker.address, lockAmount)
+    await locker.connect(bob).lock(bob.address, lockAmount)
+
+    await sharer.depositToChef()
+    // lets advance some blocks to generate some emissions
+    await advanceBlocks(10)
+    await sharer.harvestAndDistribute()
+
+    // now lets see if the locker has 75% of the claimed rewards
+    const userInfo = await chef.userInfo(0, sharer.address)
+    expect(await beets.balanceOf(locker.address)).to.equal(userInfo.rewardDebt.mul(await sharer.fBeetsLockerShare()).div(await sharer.DENOMINATOR()))
+    // to go full circle, we advance the full reward duration which is 1 epoch
+    await advanceTime(EPOCH_DURATION)
+    // // now lets claim the rewards
+    await locker.getReward(bob.address)
+    // //  bob should have now all the rewards on the locker or 75% of the emissions (minus some rounding errors)
+    expect(await beets.balanceOf(bob.address)).to.be.closeTo(userInfo.rewardDebt.mul(await sharer.fBeetsLockerShare()).div(await sharer.DENOMINATOR()), 200000)
+  })
+
+
   it("distributes 50% of the emissions to all fBeets holders in the form of fBeets revenue share", async () => {
     const sharer: FBeetsRevenueSharer = await deployFBeetsSharer()
     await chef.add(10, sharer.address, ethers.constants.AddressZero)
@@ -157,6 +190,7 @@ describe("BeetsBar", function () {
       locker.address,
       chef.address,
       farmPid,
+      INITIAL_FBEETSLOCKERSSHARE,
       fidelioDuettoPool.address,
       encodeParameters(["address"], [fidelioDuettoPool.address]),
       admin,
