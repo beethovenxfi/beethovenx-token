@@ -281,7 +281,33 @@ describe("MasterChefRewarderFactory", function () {
   })
 
   it("emits RewarderActivated event", async () => {
-    throw new Error("Not implemented")
+    const rewarderFactory = await deployRewardFactory(operator, chef, admin)
+    // we need to grant staging role on operator to the factory
+    await operator.connect(admin).grantRole(await operator.STAGE_ROLE(), rewarderFactory.address)
+
+    const lpToken = await deployERC20Mock("Some LP", "SOMELP", 10_000)
+    const rewardToken = await deployERC20Mock("Reward Token", "SomeReward", 10_000)
+    const rewardPerSecond = bn(5)
+    await rewarderFactory.prepareRewarder(lpToken.address, rewardToken.address, rewardPerSecond, ethers.constants.AddressZero)
+
+    const deploymentId = 0
+    const rewarderAddress = await rewarderFactory.deployedRewarders(deploymentId)
+    const rewarder = (await ethers.getContractAt("TimeBasedMasterChefRewarder", rewarderAddress)) as TimeBasedMasterChefRewarder
+
+    const eta = await createEta()
+    await rewarderFactory.connect(admin).approveRewarder(deploymentId, eta)
+
+    // we need to execute the addition of the farm on the master chef operator
+    await operator.connect(admin).commitFarmChanges(eta, 0)
+    await advanceTimeAndBlock(duration.hours("10").toNumber())
+    await operator.connect(admin).commitFarmChanges(eta, 1)
+
+    const poolLength = await chef.poolLength()
+    const pid = poolLength.toNumber() - 1
+
+    await expect(rewarderFactory.connect(admin).activateRewarder(deploymentId))
+      .to.emit(rewarderFactory, "RewarderActivated")
+      .withArgs(lpToken.address, rewarderAddress, pid, admin.address)
   })
 
   async function deployRewardFactory(
