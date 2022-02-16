@@ -85,6 +85,8 @@ describe("MasterChefRewarderFactory", function () {
     const deploymentId = 0 // first deployment
     const rewarderConfig = await rewarderFactory.rewarderConfigs(deploymentId)
     expect(rewarderConfig.admin).to.equal(admin.address)
+    expect(rewarderConfig.lpToken).to.equal(lpToken.address)
+    expect(rewarderConfig.rewardToken).to.equal(rewardToken.address)
     expect(rewarderConfig.rewardsPerSecond).to.equal(rewardPerSecond)
     expect(rewarderConfig.approved).to.equal(false)
     expect(rewarderConfig.activated).to.equal(false)
@@ -94,7 +96,7 @@ describe("MasterChefRewarderFactory", function () {
     const rewarder = (await ethers.getContractAt("TimeBasedMasterChefRewarder", rewarderAddress)) as TimeBasedMasterChefRewarder
     expect(await rewarder.rewardToken()).to.equal(rewardToken.address)
     expect(await rewarder.rewardPerSecond()).to.equal(0)
-    expect(await rewarder.MASTERCHEF()).to.equal(chef.address)
+    expect(await rewarder.masterChef()).to.equal(chef.address)
     expect(await rewarder.poolLength()).to.equal(0)
   })
 
@@ -274,10 +276,24 @@ describe("MasterChefRewarderFactory", function () {
     await expect(rewarderFactory.connect(admin).activateRewarder(deploymentId)).to.be.revertedWith("Pool for lp token not found")
   })
 
-  it("only allows operator to activate a rewarder", async () => {
+  it("only allows rewarder admin to activate its rewarder", async () => {
     const rewarderFactory = await deployRewardFactory(operator, chef, admin)
-    await expect(rewarderFactory.connect(bob).activateRewarder(0)).to.be.revertedWith("AccessControl")
-    await expect(rewarderFactory.connect(alice).activateRewarder(0)).to.be.revertedWith("AccessControl")
+    // we need to grant staging role on operator to the factory
+    await operator.connect(admin).grantRole(await operator.STAGE_ROLE(), rewarderFactory.address)
+
+    const lpToken = await deployERC20Mock("Some LP", "SOMELP", 10_000)
+    const rewardToken = await deployERC20Mock("Reward Token", "SomeReward", 10_000)
+    const rewardPerSecond = bn(5)
+    await rewarderFactory.prepareRewarder(lpToken.address, rewardToken.address, rewardPerSecond, ethers.constants.AddressZero)
+
+    const deploymentId = 0
+
+    const eta = await createEta()
+    await rewarderFactory.connect(admin).approveRewarder(deploymentId, eta)
+
+    // we dont create the farm on the master chef operator
+    await expect(rewarderFactory.connect(bob).activateRewarder(deploymentId)).to.be.revertedWith("Only rewarder admin can activate it")
+    await expect(rewarderFactory.connect(alice).activateRewarder(deploymentId)).to.be.revertedWith("Only rewarder admin can activate it")
   })
 
   it("emits RewarderActivated event", async () => {

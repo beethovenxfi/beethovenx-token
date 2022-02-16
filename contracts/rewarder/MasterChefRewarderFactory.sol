@@ -7,6 +7,18 @@ import "./TimeBasedMasterChefRewarder.sol";
 import "../governance/MasterChefOperator.sol";
 import "../token/BeethovenxMasterChef.sol";
 
+/*
+    This factory automates deployment & configuration of rewarders. Anyone can prepare
+    a rewarder which then needs to be approved by an admin (usually multisig). Once approved,
+    a farm addition for the desired liquidity pool is staged on the master chef operator.
+    In a next step, the staged farm addition has to be queued & executed on the master chef operator.
+    Once this is done, the admin provided in the rewarder config can activate it, setting the
+    emission rate and enabling the newly added master chef farm for emissions.
+
+    To utilize contract verification by matching similar source, we dont provide the reward token
+    in the constructor, but set it after creation with a one off setter.
+*/
+
 contract MasterChefRewarderFactory is AccessControl {
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR");
     uint256 public constant DEFAULT_REWARDER_FARM_ALLOCATION = 10;
@@ -16,6 +28,7 @@ contract MasterChefRewarderFactory is AccessControl {
     struct RewarderConfig {
         address admin;
         address lpToken;
+        address rewardToken;
         uint256 rewardsPerSecond;
         bool approved;
         uint256 timelockEta;
@@ -57,6 +70,11 @@ contract MasterChefRewarderFactory is AccessControl {
         _setupRole(OPERATOR_ROLE, _admin);
     }
 
+    /// @notice Deploys a new rewarder contract with emissions set to 0 which needs approval by the admin
+    /// @param lpToken LP token of the pool the rewarder is deployed for
+    /// @param rewardToken The reward token
+    /// @param rewardPerSecond The emissions for the reward token once the rewarder is activated
+    /// @param admin The owner of the admin, only he can activate the rewarder and ownership is transferred on activation. If zero address provided, it defaults to the factory admin
     function prepareRewarder(
         address lpToken,
         address rewardToken,
@@ -68,6 +86,7 @@ contract MasterChefRewarderFactory is AccessControl {
             RewarderConfig(
                 rewarderAdmin,
                 lpToken,
+                rewardToken,
                 rewardPerSecond,
                 false,
                 0,
@@ -76,10 +95,10 @@ contract MasterChefRewarderFactory is AccessControl {
         );
 
         TimeBasedMasterChefRewarder rewarder = new TimeBasedMasterChefRewarder(
-            IERC20(rewardToken),
-            0,
             address(masterChef)
         );
+        // we dont provide the reward token in the constructor for contract verification reasons
+        rewarder.setRewardToken(IERC20(rewardToken));
         deployedRewarders.push(rewarder);
 
         emit RewarderPrepared(
@@ -93,6 +112,9 @@ contract MasterChefRewarderFactory is AccessControl {
         return address(rewarder);
     }
 
+    /// @notice Approves the rewarder prepared under the deployment ID and stages a new farm on the master chef operator
+    /// @param deploymentId The deploymentId to approve
+    /// @param timelockEta ETA for farm addition on the master chef operator timelock
     function approveRewarder(uint256 deploymentId, uint256 timelockEta)
         external
         onlyRole(OPERATOR_ROLE)
@@ -120,10 +142,13 @@ contract MasterChefRewarderFactory is AccessControl {
         emit RewarderApproved(config.lpToken, address(rewarder), msg.sender);
     }
 
-    function activateRewarder(uint256 deploymentId)
-        external
-        onlyRole(OPERATOR_ROLE)
-    {
+    /// @notice Sets the configured emission rate and adds the added master chef farm for emissions
+    /// @param deploymentId The deploymenId to activate
+    function activateRewarder(uint256 deploymentId) external {
+        require(
+            msg.sender == rewarderConfigs[deploymentId].admin,
+            "Only rewarder admin can activate it"
+        );
         require(
             rewarderConfigs[deploymentId].approved,
             "Rewarder has not been approved yet"
@@ -158,9 +183,9 @@ contract MasterChefRewarderFactory is AccessControl {
         }
 
         // we configure the farm in the rewarder
-
         rewarder.add(poolId, DEFAULT_REWARDER_FARM_ALLOCATION);
         rewarder.setRewardPerSecond(config.rewardsPerSecond);
+        // and transfer ownership to the admin
         rewarder.transferOwnership(config.admin);
 
         emit RewarderActivated(
@@ -171,6 +196,7 @@ contract MasterChefRewarderFactory is AccessControl {
         );
     }
 
+    /// @notice Total amount of prepared rewarders
     function rewarderDeploymentLength() external view returns (uint256) {
         return deployedRewarders.length;
     }
