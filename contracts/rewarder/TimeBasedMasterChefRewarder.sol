@@ -10,7 +10,7 @@ import "../token/BeethovenxMasterChef.sol";
 contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     using SafeERC20 for IERC20;
 
-    IERC20 public immutable rewardToken;
+    IERC20 public rewardToken;
 
     struct UserInfo {
         uint256 amount;
@@ -33,10 +33,10 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     /// @dev Total allocation points. Must be the sum of all allocation points in all pools.
     uint256 totalAllocPoint;
 
-    uint256 public rewardPerSecond;
+    uint256 public rewardPerSecond = 0;
     uint256 private constant ACC_TOKEN_PRECISION = 1e12;
 
-    address public immutable MASTERCHEF;
+    address public immutable masterChef;
 
     event LogOnReward(
         address indexed user,
@@ -55,14 +55,17 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     event LogRewardPerSecond(uint256 rewardPerSecond);
     event LogInit();
 
-    constructor(
-        IERC20 _rewardToken,
-        uint256 _rewardPerSecond,
-        address _MASTERCHEF
-    ) {
-        rewardToken = _rewardToken;
-        rewardPerSecond = _rewardPerSecond;
-        MASTERCHEF = _MASTERCHEF;
+    constructor(address _masterChef) {
+        masterChef = _masterChef;
+    }
+
+    /// @notice To allow contract verification on matching similar source, we dont provide this in the constructor
+    function setRewardToken(IERC20 token) external onlyOwner {
+        require(
+            address(rewardToken) == address(0),
+            "Reward token can only be set once"
+        );
+        rewardToken = token;
     }
 
     function onBeetsReward(
@@ -122,7 +125,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
 
     modifier onlyMasterChef() {
         require(
-            msg.sender == MASTERCHEF,
+            msg.sender == masterChef,
             "Only MasterChef can call this function."
         );
         _;
@@ -180,9 +183,9 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
             UserInfo storage user = userInfo[_pid][_user];
             uint256 accRewardTokenPerShare = pool.accRewardTokenPerShare;
 
-            uint256 totalLpSupply = BeethovenxMasterChef(MASTERCHEF)
+            uint256 totalLpSupply = BeethovenxMasterChef(masterChef)
                 .lpTokens(_pid)
-                .balanceOf(MASTERCHEF);
+                .balanceOf(masterChef);
 
             if (block.timestamp > pool.lastRewardTime && totalLpSupply != 0) {
                 uint256 timeSinceLastReward = block.timestamp -
@@ -220,9 +223,9 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     function updatePool(uint256 pid) public returns (PoolInfo memory pool) {
         pool = poolInfo[pid];
         if (pool.lastRewardTime != 0 && block.timestamp > pool.lastRewardTime) {
-            uint256 totalLpSupply = BeethovenxMasterChef(MASTERCHEF)
+            uint256 totalLpSupply = BeethovenxMasterChef(masterChef)
                 .lpTokens(pid)
-                .balanceOf(MASTERCHEF);
+                .balanceOf(masterChef);
 
             if (totalLpSupply > 0) {
                 uint256 time = block.timestamp - pool.lastRewardTime;
