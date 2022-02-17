@@ -183,6 +183,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         require(_kickRewardEpochDelay >= 2, "min delay of 2 epochs required");
         kickRewardPerEpoch = _kickRewardPerEpoch;
         kickRewardEpochDelay = _kickRewardEpochDelay;
+
+        emit SetKickIncentive(_kickRewardEpochDelay, _kickRewardPerEpoch);
     }
 
     /// @notice Shutdown the contract and release all locks
@@ -548,7 +550,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         Epoch storage currentEpoch = epochs[epochs.length - 1];
         currentEpoch.supply += _amount;
 
-        emit Locked(_account, _amount);
+        emit Locked(_account, _amount, currentEpochStartTime);
     }
 
     /// @notice Withdraw all currently locked tokens where the unlock time has passed
@@ -692,8 +694,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         }
     }
 
-    function _notifyReward(address _rewardsToken, uint256 _reward) internal {
-        Reward storage tokenRewardData = rewardData[_rewardsToken];
+    function _notifyReward(address _rewardToken, uint256 _reward) internal {
+        Reward storage tokenRewardData = rewardData[_rewardToken];
 
         // if there has not been a reward for the duration of an epoch, the reward rate resets
         if (block.timestamp >= tokenRewardData.periodFinish) {
@@ -708,6 +710,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
         tokenRewardData.lastUpdateTime = block.timestamp;
         tokenRewardData.periodFinish = block.timestamp + epochDuration;
+
+        emit RewardAdded(_rewardToken, _reward, tokenRewardData.rewardRate);
     }
 
     /// @notice Called by a reward distributor to distribute rewards
@@ -729,8 +733,6 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             address(this),
             _amount
         );
-
-        emit RewardAdded(_rewardToken, _amount);
     }
 
     /// @notice Emergency function to withdraw non reward tokens
@@ -776,8 +778,12 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         _;
     }
 
-    event RewardAdded(address indexed _token, uint256 _reward);
-    event Locked(address indexed _user, uint256 _lockedAmount);
+    event RewardAdded(
+        address indexed _token,
+        uint256 _reward,
+        uint256 _rewardRate
+    );
+    event Locked(address indexed _user, uint256 _lockedAmount, uint256 _epoch);
     event Withdrawn(address indexed _user, uint256 _amount, bool _relocked);
     event KickReward(
         address indexed _user,
@@ -790,4 +796,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         uint256 _reward
     );
     event Recovered(address _token, uint256 _amount);
+    event SetKickIncentive(
+        uint256 _kickRewardEpochDelay,
+        uint256 _kickRewardPerEpoch
+    );
 }
