@@ -125,12 +125,12 @@ describe("FBeetsRevenueSharer", function () {
     expect(await beets.balanceOf(bob.address)).to.be.closeTo(userInfo.rewardDebt.div(2), 200000)
   })
 
-  it("change fBeets locker share above 100%", async () => {
+  it("revert if fBeets locker share above 100%", async () => {
     const sharer: FBeetsRevenueSharer = await deployFBeetsSharer()
     await expect(sharer.setFBeetsLockerShare(1001)).to.be.revertedWith("Share cannot exceed 100%")
   })
 
-  it("distribute correct amount of to lockers after changing share", async () => {
+  it("distribute correct amount of beets to lockers after changing share", async () => {
     const sharer: FBeetsRevenueSharer = await deployFBeetsSharer()
     await chef.add(10, sharer.address, ethers.constants.AddressZero)
 
@@ -141,26 +141,34 @@ describe("FBeetsRevenueSharer", function () {
     // also we need someone to lock some fBeets
     const lockAmount = bn(1, 0)
     await mintFBeets(bob, lockAmount)
+    // approvals for transferfrom are done on the token contract?
     await beetsBar.connect(bob).approve(locker.address, lockAmount)
+    // actually lock the fbeets
     await locker.connect(bob).lock(bob.address, lockAmount)
 
+    // save how many BPTs are in the beetsBar before harvest
+    const fidelioBptsBeforeHarvest = await fidelioDuettoPool.balanceOf(beetsBar.address)
+
+    // deposit the one token into the "sharer farm" done only once
     await sharer.depositToChef()
     // lets advance some blocks to generate some emissions
     await advanceBlocks(10)
+    // harvest all "sharer farm" rewards and transfer to locker contract and add bpt to beetsbar
     await sharer.harvestAndDistribute()
 
     // now lets see if the locker has 75% of the claimed rewards
+    // get userInfo of user sharer.address from farm 0 (which is the "sharer farm")
     const userInfo = await chef.userInfo(0, sharer.address)
-    expect(await beets.balanceOf(locker.address)).to.equal(userInfo.rewardDebt.mul(await sharer.fBeetsLockerShare()).div(await sharer.DENOMINATOR()))
-    // to go full circle, we advance the full reward duration which is 1 epoch
-    await advanceTime(EPOCH_DURATION)
-    // // now lets claim the rewards
-    await locker.getReward(bob.address)
-    // //  bob should have now all the rewards on the locker or 75% of the emissions (minus some rounding errors)
-    expect(await beets.balanceOf(bob.address)).to.be.closeTo(userInfo.rewardDebt.mul(await sharer.fBeetsLockerShare()).div(await sharer.DENOMINATOR()), 200000)
+    // rewardDebt is the total amount harvested
+    // fbeets balance of the locker (which will distribute to lockers) must be 75% of the total harvest (since it's the first harvest)
+    expect(await beets.balanceOf(locker.address)).to.equal(userInfo.rewardDebt.mul(750).div(1000))
+
+    // check if there are now 25% more bpts in the beetsBar
+    const fidelioBptsAfterHarvest = await fidelioDuettoPool.balanceOf(beetsBar.address)
+    expect(fidelioBptsBeforeHarvest.add(userInfo.rewardDebt.mul(250).div(1000))).to.equal(fidelioBptsAfterHarvest)
   })
 
-  it("distribute 100% to lockers and none to non-lockers", async () => {
+  it("only lockers get rewards", async () => {
     const sharer: FBeetsRevenueSharer = await deployFBeetsSharer()
     await chef.add(10, sharer.address, ethers.constants.AddressZero)
 
@@ -179,25 +187,49 @@ describe("FBeetsRevenueSharer", function () {
     await sharer.depositToChef()
     // lets advance some blocks to generate some emissions
     await advanceBlocks(10)
+    //save amount of fidelio bpts in beetsbar for checks after harvest
+    const fidelioBptsBefore = await fidelioDuettoPool.balanceOf(beetsBar.address) 
     await sharer.harvestAndDistribute()
 
-    // now lets see if the locker has 100% of the rewards
-    const userInfoBob = await chef.userInfo(0, sharer.address)
-    expect(await beets.balanceOf(locker.address)).to.equal(userInfoBob.rewardDebt.mul(await sharer.fBeetsLockerShare()).div(await sharer.DENOMINATOR()))
-    // now lets see if alice has zero rewards
-    const userInfoAlice = await chef.userInfo(1, sharer.address)
-    expect(userInfoAlice.rewardDebt).to.equal(0)
-    // to go full circle, we advance the full reward duration which is 1 epoch
-    await advanceTime(EPOCH_DURATION)
-    // now lets claim the rewards
-    await locker.getReward(bob.address)
-    // bob should have now all the rewards on the locker or 100% of the emissions (minus some rounding errors)
-    // TODO What happens here if two people minted fBeets but only one locked???
-    expect(await beets.balanceOf(bob.address)).to.equal(userInfoBob.rewardDebt)
-    // now lets claim the rewards
-    await locker.getReward(alice.address)
-    // alice should have no rewards
-    expect(await beets.balanceOf(alice.address)).to.equal(0)
+    // now lets see if the locker has 100% of the rewards (total harvested amount (rewardDebt) equals beets amount on the locker)
+    const sharerUserInfo = await chef.userInfo(0, sharer.address)
+    expect(await beets.balanceOf(locker.address)).to.equal(sharerUserInfo.rewardDebt)
+    // rewards to non-lockers are given in the form of added bpt to beetsbar. 
+    // No rewards mean that there are still the same amount of fidelio bpts in beetsbar
+    const fidelioBptsAfter = await fidelioDuettoPool.balanceOf(beetsBar.address) 
+    expect(fidelioBptsAfter).to.equal(fidelioBptsBefore)
+  })
+
+  it("everyone gets the same amount of rewards (all to bpt tokens)", async () => {
+    const sharer: FBeetsRevenueSharer = await deployFBeetsSharer()
+    await chef.add(10, sharer.address, ethers.constants.AddressZero)
+
+    // we need to add the sharer as a rewarder to the locker
+    await locker.addReward(beets.address, sharer.address)
+    // change the default share
+    await sharer.setFBeetsLockerShare(0)
+    // also we need someone to lock some fBeets
+    const lockAmount = bn(1, 0)
+    await mintFBeets(bob, lockAmount)
+    await beetsBar.connect(bob).approve(locker.address, lockAmount)
+    await locker.connect(bob).lock(bob.address, lockAmount)
+    // also we need someone to NOT lock fBeets, just mint
+    await mintFBeets(alice, lockAmount)
+
+    await sharer.depositToChef()
+    // lets advance some blocks to generate some emissions
+    await advanceBlocks(10)
+    //save amount of fidelio bpts in beetsbar for checks after harvest
+    const fidelioBptsBefore = await fidelioDuettoPool.balanceOf(beetsBar.address) 
+    await sharer.harvestAndDistribute()
+
+    // now lets see if the locker has no rewards
+    expect(await beets.balanceOf(locker.address)).to.equal(0)
+    // rewards to non-lockers are given in the form of added bpt to beetsbar. 
+    // All rewards to non-lockers mean that there are now additioanl rewardDept amount of BPTs in the beetsbar
+    const fidelioBptsAfter = await fidelioDuettoPool.balanceOf(beetsBar.address) 
+    const userInfo = await chef.userInfo(0, sharer.address)
+    expect(fidelioBptsBefore.add(userInfo.rewardDebt)).to.equal(fidelioBptsAfter)
   })
 
   it("distributes remaining share to all fBeets holders by accruing value", async () => {
