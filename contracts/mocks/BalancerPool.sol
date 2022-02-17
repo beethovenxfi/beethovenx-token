@@ -15,6 +15,7 @@ contract BalancerPool is IBalancerVault, ERC20("BalancerToken", "BPT") {
         address recipient,
         JoinPoolRequest memory request
     ) external payable override {
+        ERC20(request.assets[0]).transferFrom(msg.sender, address(this), request.maxAmountsIn[0]);
         _mint(recipient, request.maxAmountsIn[0]);
     }
 

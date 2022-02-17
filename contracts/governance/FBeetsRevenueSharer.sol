@@ -83,12 +83,15 @@ contract FBeetsRevenueSharer is
 
     function _distribute() internal {
         if (beets.balanceOf(address(this)) > 0) {
-            // fBeetsLockerShare of the rewards go to locked fBeets holders
-            uint256 rewardsForLockedFBeets = beets.balanceOf(address(this)) * fBeetsLockerShare / DENOMINATOR;
-            beets.approve(address(locker), rewardsForLockedFBeets);
-            locker.notifyRewardAmount(address(beets), rewardsForLockedFBeets);
+            // Only distribute if share for lockers is greater than 0
+            if (fBeetsLockerShare > 0){
+                // fBeetsLockerShare of the rewards go to locked fBeets holders
+                uint256 rewardsForLockedFBeets = beets.balanceOf(address(this)) * fBeetsLockerShare / DENOMINATOR;
+                beets.approve(address(locker), rewardsForLockedFBeets);
+                locker.notifyRewardAmount(address(beets), rewardsForLockedFBeets);
+            }
 
-            // Share is less than 100% so there will be left-over for non-lockers
+            // Only distribute to BPTs if lockersShare is less than 100%
             if (fBeetsLockerShare < DENOMINATOR) {
                 // the rest we convert to fBeets and share with all fBeets holders
                 // we cannot assign fix size arrays to dynamic arrays, so we do this thing...
@@ -97,6 +100,8 @@ contract FBeetsRevenueSharer is
                 uint256[] memory amountsIn = new uint256[](1);
                 amountsIn[0] = beets.balanceOf(address(this));
                 uint256 minBptOut = 0;
+
+                beets.approve(address(vault), amountsIn[0]);
 
                 vault.joinPool(
                     fidelioDuettoPoolId,
