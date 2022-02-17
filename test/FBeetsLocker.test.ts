@@ -65,8 +65,8 @@ describe("fBeets locking contract", function () {
     expect(await locker.kickRewardPerEpoch()).to.eq(100)
     expect(await locker.kickRewardEpochDelay()).to.eq(4)
     expect(await locker.isShutdown()).to.be.false
-    expect(await locker.name()).to.eq("Vote Locked fBeets Token")
-    expect(await locker.symbol()).to.eq("vfBeets")
+    expect(await locker.name()).to.eq("Locked fBeets Token")
+    expect(await locker.symbol()).to.eq("lfBeets")
     expect(await locker.decimals()).to.eq(18)
 
     const actualFirstEpoch = await locker.epochs(0)
@@ -175,7 +175,7 @@ describe("fBeets locking contract", function () {
 
     await expect(locker.connect(bob).lock(bob.address, expectedLockedAmount))
       .to.emit(locker, "Locked")
-      .withArgs(bob.address, expectedLockedAmount)
+      .withArgs(bob.address, expectedLockedAmount, await currentEpoch())
 
     // check if tokens have been transferred
     expect(await fBeets.balanceOf(bob.address)).to.equal(0)
@@ -351,7 +351,7 @@ describe("fBeets locking contract", function () {
       .to.emit(locker, "Withdrawn")
       .withArgs(bob.address, firstLockAmount, true)
       .to.emit(locker, "Locked")
-      .withArgs(bob.address, firstLockAmount)
+      .withArgs(bob.address, firstLockAmount, firstUnlockTime)
 
     // now a third user lock with the relocked amount should have been created
 
@@ -374,7 +374,7 @@ describe("fBeets locking contract", function () {
       .to.emit(locker, "Withdrawn")
       .withArgs(bob.address, secondLockAmount, true)
       .to.emit(locker, "Locked")
-      .withArgs(alice.address, secondLockAmount)
+      .withArgs(alice.address, secondLockAmount, secondUnlockTime)
 
     // now a first user lock with the relocked amount should have been created for alice
     const aliceFirstLock = await locker.userLocks(alice.address, 0)
@@ -788,7 +788,7 @@ describe("fBeets locking contract", function () {
     await rewardToken.connect(rewarder).approve(locker.address, rewardAmount)
     await expect(locker.connect(rewarder).notifyRewardAmount(rewardToken.address, rewardAmount))
       .to.emit(locker, "RewardAdded")
-      .withArgs(rewardToken.address, rewardAmount)
+      .withArgs(rewardToken.address, rewardAmount, rewardAmount.div(EPOCH_DURATION))
   })
 
   it("adjusts the reward data accordingly in case of multiple reward distributions in the same reward period", async () => {
@@ -1112,7 +1112,7 @@ describe("fBeets locking contract", function () {
 
     await someErc20.transfer(locker.address, erc20Amount)
 
-    await expect(locker.recoverERC20(someErc20.address, erc20Amount)).to.emit(locker, 'Recovered').withArgs(someErc20.address, erc20Amount)
+    await expect(locker.recoverERC20(someErc20.address, erc20Amount)).to.emit(locker, "Recovered").withArgs(someErc20.address, erc20Amount)
     expect(await someErc20.balanceOf(owner.address)).to.equal(erc20Amount)
   })
 
