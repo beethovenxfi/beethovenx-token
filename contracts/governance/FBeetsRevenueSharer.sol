@@ -76,7 +76,10 @@ contract FBeetsRevenueSharer is
         _distribute();
     }
 
-    function setFBeetsLockerShare(uint256 newFBeetsLockerShare) external onlyRole(OPERATOR_ROLE){
+    function setFBeetsLockerShare(uint256 newFBeetsLockerShare)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
         require(newFBeetsLockerShare <= 1000, "Share cannot exceed 100%");
         fBeetsLockerShare = newFBeetsLockerShare;
     }
@@ -84,11 +87,16 @@ contract FBeetsRevenueSharer is
     function _distribute() internal {
         if (beets.balanceOf(address(this)) > 0) {
             // Only distribute if share for lockers is greater than 0
-            if (fBeetsLockerShare > 0){
+            if (fBeetsLockerShare > 0) {
                 // fBeetsLockerShare of the rewards go to locked fBeets holders
-                uint256 rewardsForLockedFBeets = beets.balanceOf(address(this)) * fBeetsLockerShare / DENOMINATOR;
+                uint256 rewardsForLockedFBeets = (beets.balanceOf(
+                    address(this)
+                ) * fBeetsLockerShare) / DENOMINATOR;
                 beets.approve(address(locker), rewardsForLockedFBeets);
-                locker.notifyRewardAmount(address(beets), rewardsForLockedFBeets);
+                locker.notifyRewardAmount(
+                    address(beets),
+                    rewardsForLockedFBeets
+                );
             }
 
             // Only distribute to BPTs if lockersShare is less than 100%
@@ -125,7 +133,9 @@ contract FBeetsRevenueSharer is
                     fidelioDuetteBpt.balanceOf(address(this))
                 );
 
-                beetsBar.shareRevenue(fidelioDuetteBpt.balanceOf(address(this)));
+                beetsBar.shareRevenue(
+                    fidelioDuetteBpt.balanceOf(address(this))
+                );
             }
         }
     }

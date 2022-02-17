@@ -188,15 +188,15 @@ describe("FBeetsRevenueSharer", function () {
     // lets advance some blocks to generate some emissions
     await advanceBlocks(10)
     //save amount of fidelio bpts in beetsbar for checks after harvest
-    const fidelioBptsBefore = await fidelioDuettoPool.balanceOf(beetsBar.address) 
+    const fidelioBptsBefore = await fidelioDuettoPool.balanceOf(beetsBar.address)
     await sharer.harvestAndDistribute()
 
     // now lets see if the locker has 100% of the rewards (total harvested amount (rewardDebt) equals beets amount on the locker)
     const sharerUserInfo = await chef.userInfo(0, sharer.address)
     expect(await beets.balanceOf(locker.address)).to.equal(sharerUserInfo.rewardDebt)
-    // rewards to non-lockers are given in the form of added bpt to beetsbar. 
+    // rewards to non-lockers are given in the form of added bpt to beetsbar.
     // No rewards mean that there are still the same amount of fidelio bpts in beetsbar
-    const fidelioBptsAfter = await fidelioDuettoPool.balanceOf(beetsBar.address) 
+    const fidelioBptsAfter = await fidelioDuettoPool.balanceOf(beetsBar.address)
     expect(fidelioBptsAfter).to.equal(fidelioBptsBefore)
   })
 
@@ -220,20 +220,20 @@ describe("FBeetsRevenueSharer", function () {
     // lets advance some blocks to generate some emissions
     await advanceBlocks(10)
     //save amount of fidelio bpts in beetsbar for checks after harvest
-    const fidelioBptsBefore = await fidelioDuettoPool.balanceOf(beetsBar.address) 
+    const fidelioBptsBefore = await fidelioDuettoPool.balanceOf(beetsBar.address)
     await sharer.harvestAndDistribute()
 
     // now lets see if the locker has no rewards
     expect(await beets.balanceOf(locker.address)).to.equal(0)
-    // rewards to non-lockers are given in the form of added bpt to beetsbar. 
+    // rewards to non-lockers are given in the form of added bpt to beetsbar.
     // All rewards to non-lockers mean that there are now additioanl rewardDept amount of BPTs in the beetsbar
-    const fidelioBptsAfter = await fidelioDuettoPool.balanceOf(beetsBar.address) 
+    const fidelioBptsAfter = await fidelioDuettoPool.balanceOf(beetsBar.address)
     const userInfo = await chef.userInfo(0, sharer.address)
     expect(fidelioBptsBefore.add(userInfo.rewardDebt)).to.equal(fidelioBptsAfter)
   })
 
   it("distributes remaining share to all fBeets holders by accruing value", async () => {
-    // With the remaining beets (total emissions - locked share) we join single sided the fidelio duetto pool and share the resulting beets as revenue with fBeets holders 
+    // With the remaining beets (total emissions - locked share) we join single sided the fidelio duetto pool and share the resulting beets as revenue with fBeets holders
 
     const sharer: FBeetsRevenueSharer = await deployFBeetsSharer()
     await chef.add(10, sharer.address, ethers.constants.AddressZero)
