@@ -8,6 +8,7 @@ import {
   bn,
   deployContract,
   deployERC20Mock,
+  duration,
   getBlockTime,
   latest,
   setAutomineBlocks,
@@ -781,14 +782,21 @@ describe("fBeets locking contract", function () {
     expect(await rewardToken.balanceOf(rewarder.address)).to.equal(totalSupply.sub(rewardAmount))
   })
 
-  it("emits event when rewards are distributed", async () => {
+  it("emits event when rewards are added", async () => {
     const { rewardToken, totalSupply } = await aRewardToken()
     const rewardAmount = bn(100)
     await locker.addReward(rewardToken.address, rewarder.address)
     await rewardToken.connect(rewarder).approve(locker.address, rewardAmount)
+
+    // we have to make the timestamp of the next block predictable so we know the end period of the reward.
+    // therefore  we advance 5 seconds from the latest block
+    const latestBlockTime = await latest()
+    const nextBlockTimestamp = latestBlockTime.toNumber() + 5
+    await advanceToTime(nextBlockTimestamp)
+
     await expect(locker.connect(rewarder).notifyRewardAmount(rewardToken.address, rewardAmount))
       .to.emit(locker, "RewardAdded")
-      .withArgs(rewardToken.address, rewardAmount, rewardAmount.div(EPOCH_DURATION))
+      .withArgs(rewardToken.address, rewardAmount, rewardAmount.div(EPOCH_DURATION), nextBlockTimestamp + EPOCH_DURATION)
   })
 
   it("adjusts the reward data accordingly in case of multiple reward distributions in the same reward period", async () => {

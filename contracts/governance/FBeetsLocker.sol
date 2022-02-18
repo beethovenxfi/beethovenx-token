@@ -711,7 +711,12 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         tokenRewardData.lastUpdateTime = block.timestamp;
         tokenRewardData.periodFinish = block.timestamp + epochDuration;
 
-        emit RewardAdded(_rewardToken, _reward, tokenRewardData.rewardRate);
+        emit RewardAdded(
+            _rewardToken,
+            _reward,
+            tokenRewardData.rewardRate,
+            tokenRewardData.periodFinish
+        );
     }
 
     /// @notice Called by a reward distributor to distribute rewards
@@ -781,7 +786,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     event RewardAdded(
         address indexed _token,
         uint256 _reward,
-        uint256 _rewardRate
+        uint256 _rewardRate,
+        uint256 _periodFinish
     );
     event Locked(address indexed _user, uint256 _lockedAmount, uint256 _epoch);
     event Withdrawn(address indexed _user, uint256 _amount, bool _relocked);
