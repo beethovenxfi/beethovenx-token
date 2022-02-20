@@ -247,9 +247,19 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         }
     }
 
-    // @notice Top up reward token as a safer alternative to transfer
-    // @param amount Amount of rewards to add
+    /// @notice Top up reward token as a safer alternative to transfer
+    /// @param amount Amount of rewards to add
     function topUpRewards(uint256 amount) external {
         rewardToken.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    /// @notice sets rewards per second to 0 and withdraws remaining funds
+    /// @param withdrawRemainingFundsTo where to withdraaw the remaining funds to
+    function shutDown(address withdrawRemainingFundsTo) external onlyOwner {
+        setRewardPerSecond(0);
+        rewardToken.transfer(
+            withdrawRemainingFundsTo,
+            rewardToken.balanceOf(address(this))
+        );
     }
 }
