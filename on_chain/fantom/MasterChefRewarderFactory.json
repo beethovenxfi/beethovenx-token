@@ -1,1 +1,10 @@
-{"contract":"MasterChefRewarderFactory","address":"0x39899E4305cafF436409aa1D086CA7771848eDD1","args":["0x24Dce9214bA5B93B4ee7F1A7A00c9BeB1c8F709C","0x8166994d9ebBe5829EC86Bd81258149B87faCfd3","0x3Fa5c411857455e0E876412010BE600F4658Dddd"],"verified":true}
+{
+  "contract": "MasterChefRewarderFactory",
+  "address": "0xF3906b1c590fDE35675f53Be529eF5C6639AD5dc",
+  "args": [
+    "0x24Dce9214bA5B93B4ee7F1A7A00c9BeB1c8F709C",
+    "0x8166994d9ebBe5829EC86Bd81258149B87faCfd3",
+    "0x3Fa5c411857455e0E876412010BE600F4658Dddd"
+  ],
+  "verified": true
+}

@@ -40,6 +40,8 @@ contract MasterChefRewarderFactory is AccessControl {
 
     RewarderConfig[] public rewarderConfigs;
     TimeBasedMasterChefRewarder[] public deployedRewarders;
+    // admin address => deploymentIds
+    mapping(address => uint256[]) public _deploymentIdsByAdmin;
 
     event RewarderPrepared(
         address lpToken,
@@ -50,13 +52,8 @@ contract MasterChefRewarderFactory is AccessControl {
         address sender
     );
 
-    event RewarderApproved(address lpToken, address rewarder, address admin);
-    event RewarderActivated(
-        address lpToken,
-        address rewarder,
-        uint256 pid,
-        address admin
-    );
+    event RewarderApproved(address rewarder);
+    event RewarderActivated(address rewarder);
 
     constructor(
         MasterChefOperator _masterChefOperator,
@@ -100,6 +97,7 @@ contract MasterChefRewarderFactory is AccessControl {
         // we dont provide the reward token in the constructor for contract verification reasons
         rewarder.setRewardToken(IERC20(rewardToken));
         deployedRewarders.push(rewarder);
+        _deploymentIdsByAdmin[rewarderAdmin].push(deployedRewarders.length - 1);
 
         emit RewarderPrepared(
             lpToken,
@@ -139,12 +137,15 @@ contract MasterChefRewarderFactory is AccessControl {
         );
 
         masterChefOperator.stageFarmAdditions(farmAdditions, timelockEta);
-        emit RewarderApproved(config.lpToken, address(rewarder), msg.sender);
+        emit RewarderApproved(address(rewarder));
     }
 
     /// @notice Sets the configured emission rate and adds the added master chef farm for emissions
     /// @param deploymentId The deploymenId to activate
-    function activateRewarder(uint256 deploymentId) external {
+    /// @param configurePool if true, tries to infer the master chef pool
+    function activateRewarder(uint256 deploymentId, bool configurePool)
+        external
+    {
         require(
             msg.sender == rewarderConfigs[deploymentId].admin,
             "Only rewarder admin can activate it"
@@ -163,41 +164,46 @@ contract MasterChefRewarderFactory is AccessControl {
         TimeBasedMasterChefRewarder rewarder = deployedRewarders[deploymentId];
         config.activated = true;
         // we need to find the farm pool ID for the rewarder, since it has been added lately, we start from the top
-        uint256 poolId = masterChef.poolLength();
-        require(poolId > 0);
+        if (configurePool) {
+            uint256 poolId = masterChef.poolLength();
+            require(poolId > 0);
 
-        bool poolFound = false;
-        do {
-            poolId--;
+            bool poolFound = false;
+            do {
+                poolId--;
 
-            if (
-                address(masterChef.lpTokens(poolId)) == config.lpToken &&
-                masterChef.rewarder(poolId) == rewarder
-            ) {
-                poolFound = true;
+                if (
+                    address(masterChef.lpTokens(poolId)) == config.lpToken &&
+                    masterChef.rewarder(poolId) == rewarder
+                ) {
+                    poolFound = true;
+                }
+            } while (poolId > 0 && !poolFound);
+
+            if (!poolFound) {
+                revert("Pool for lp token not found");
             }
-        } while (poolId > 0 && !poolFound);
 
-        if (!poolFound) {
-            revert("Pool for lp token not found");
+            // we configure the farm in the rewarder
+            rewarder.add(poolId, DEFAULT_REWARDER_FARM_ALLOCATION);
         }
-
-        // we configure the farm in the rewarder
-        rewarder.add(poolId, DEFAULT_REWARDER_FARM_ALLOCATION);
         rewarder.setRewardPerSecond(config.rewardsPerSecond);
         // and transfer ownership to the admin
         rewarder.transferOwnership(config.admin);
 
-        emit RewarderActivated(
-            config.lpToken,
-            address(rewarder),
-            poolId,
-            msg.sender
-        );
+        emit RewarderActivated(address(rewarder));
     }
 
     /// @notice Total amount of prepared rewarders
     function rewarderDeploymentLength() external view returns (uint256) {
         return deployedRewarders.length;
+    }
+
+    function deploymentIdsByAdmin(address admin)
+        external
+        view
+        returns (uint256[] memory)
+    {
+        return _deploymentIdsByAdmin[admin];
     }
 }

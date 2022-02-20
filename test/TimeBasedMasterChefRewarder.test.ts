@@ -36,26 +36,32 @@ describe("TimeBasedMasterChefRewarder", function () {
   })
 
   it("sets intial state correctly", async () => {
-    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
-    const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
 
-    expect(await rewarder.rewardPerSecond()).to.equal(rewardsPerSecond)
+    expect(await rewarder.masterChef()).to.equal(chef.address)
+    expect(await rewarder.rewardToken()).to.equal(ethers.constants.AddressZero)
+    expect(await rewarder.rewardPerSecond()).to.equal(0)
+  })
+
+  it("sets reward token", async () => {
+    const rewarder: TimeBasedMasterChefRewarder = await deployRewarder()
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    await rewarder.setRewardToken(rewardToken.address)
     expect(await rewarder.rewardToken()).to.equal(rewardToken.address)
   })
 
-  it("sets rewards per second", async () => {
+  it("only allows setting of reward token once", async () => {
+    const rewarder: TimeBasedMasterChefRewarder = await deployRewarder()
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
-    const initialRewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      initialRewardsPerSecond,
-      chef.address,
-    ])
+    const anotherRewardToken = await deployERC20Mock("Token 2", "T2", bn(10_000))
+
+    await rewarder.setRewardToken(rewardToken.address)
+    await expect(rewarder.setRewardToken(anotherRewardToken.address)).to.be.revertedWith("Reward token can only be set once")
+  })
+
+  it("sets rewards per second", async () => {
+    const rewarder = await deployRewarder()
 
     const updatedRewardsPerSecond = bn(7)
     await expect(rewarder.setRewardPerSecond(updatedRewardsPerSecond)).to.emit(rewarder, "LogRewardPerSecond").withArgs(updatedRewardsPerSecond)
@@ -65,12 +71,7 @@ describe("TimeBasedMasterChefRewarder", function () {
   it("returns pool length", async () => {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
     const rewardToken2 = await deployERC20Mock("Token 2", "T2", bn(10_000))
-    const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder: TimeBasedMasterChefRewarder = await deployRewarder()
 
     await chef.add(10, rewardToken.address, rewarder.address)
     await chef.add(10, rewardToken2.address, rewarder.address)
@@ -83,15 +84,9 @@ describe("TimeBasedMasterChefRewarder", function () {
   })
 
   it("adds masterchef pool with specified allocation points", async () => {
-    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
-    const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
-
-    await chef.add(10, rewardToken.address, rewarder.address)
+    const lpToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+    const rewarder = await deployRewarder()
+    await chef.add(10, lpToken.address, rewarder.address)
 
     const allocationPoint = 20
     await rewarder.add(0, allocationPoint)
@@ -101,12 +96,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
   it("reverts when adding a pool which already exists", async () => {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
-    const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
     await chef.add(10, rewardToken.address, rewarder.address)
 
     await rewarder.add(0, 10)
@@ -115,12 +105,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
   it("sets existing pool allocation points", async () => {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
-    const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
 
     await chef.add(10, rewardToken.address, rewarder.address)
 
@@ -135,25 +120,12 @@ describe("TimeBasedMasterChefRewarder", function () {
   })
 
   it("reverts when setting allocation points for a non existent pool", async () => {
-    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
-    const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
 
     await expect(rewarder.set(0, 10)).to.be.revertedWith("Pool does not exist")
   })
   it("returns 0 pending tokens if pool does not exist", async () => {
-    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
-    const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
-
+    const rewarder = await deployRewarder()
     expect(await rewarder.pendingToken(0, alice.address)).to.equal(bn(0))
   })
 
@@ -161,12 +133,8 @@ describe("TimeBasedMasterChefRewarder", function () {
     // as a safety measure, we can use the topUp function to transfer our reward token
     const rewardToken = await deployERC20Mock("Token 1", "T1", 10_000)
 
-    const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
 
     const topUpAmount = bn(100)
     await rewardToken.approve(rewarder.address, topUpAmount)
@@ -180,11 +148,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
 
@@ -217,11 +183,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
 
@@ -262,11 +226,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     const rewardAmount = bn(10_000)
     await rewardToken.approve(rewarder.address, rewardAmount)
@@ -322,11 +284,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(98))
 
@@ -353,11 +313,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(98))
 
@@ -380,11 +338,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await chef.add(10, lpToken.address, rewarder.address)
     await rewarder.add(0, 100)
@@ -400,11 +356,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await chef.add(10, lpToken.address, rewarder.address)
     await rewarder.add(0, 100)
@@ -422,11 +376,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await chef.add(10, lpToken.address, rewarder.address)
     await rewarder.add(0, 100)
@@ -444,11 +396,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await chef.add(10, lpToken.address, rewarder.address)
     await rewarder.add(0, 100)
@@ -461,36 +411,37 @@ describe("TimeBasedMasterChefRewarder", function () {
     await expect(rewarder.onBeetsReward(0, bob.address, bob.address, 10, bn(100))).to.be.revertedWith("Only MasterChef can call this function.")
   })
 
-  it.skip("allows owner emergency withdraw", async () => {
+  it("allows owner to shut down rewarder and withdraw remaining funds", async () => {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
 
-    await rewarder.emergencyWithdraw(rewardToken.address, bob.address)
+    await rewarder.shutDown(bob.address)
+    expect(await rewarder.rewardPerSecond()).to.equal(0)
     expect(await rewardToken.balanceOf(bob.address)).to.equal(bn(10_000))
   })
 
-  it.skip("rejects if anyone else than owner calls emergency withdraw", async () => {
+  it("rejects if anyone else than owner calls shutdown", async () => {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
     const rewardsPerSecond = bn(5)
-    const rewarder: TimeBasedMasterChefRewarder = await deployContract("TimeBasedMasterChefRewarder", [
-      rewardToken.address,
-      rewardsPerSecond,
-      chef.address,
-    ])
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
 
-    await expect(rewarder.connect(bob).emergencyWithdraw(rewardToken.address, bob.address)).to.be.revertedWith(
-      "Ownable: caller is not the owner"
-    )
+    await expect(rewarder.connect(bob).shutDown(bob.address)).to.be.revertedWith("Ownable: caller is not the owner")
+    await expect(rewarder.connect(alice).shutDown(bob.address)).to.be.revertedWith("Ownable: caller is not the owner")
   })
+
+  async function deployRewarder(): Promise<TimeBasedMasterChefRewarder> {
+    return deployContract("TimeBasedMasterChefRewarder", [chef.address])
+  }
 })
