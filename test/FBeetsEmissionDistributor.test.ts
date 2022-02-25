@@ -74,6 +74,18 @@ describe("FBeetsEmissionDistributor", function () {
     expect(await distributor.hasRole(await distributor.DEFAULT_ADMIN_ROLE(), owner.address)).to.be.true
   })
 
+  it("allows changing of master chef farm ID by the operator", async () => {
+    const distributor: FBeetsEmissionDistributor = await deployFBeetsEmissionDistributor(0)
+    await distributor.setFarmId(2)
+    expect(await distributor.farmPid()).to.equal(2)
+  })
+
+  it("allows only operator to change master chef farm ID", async () => {
+    const distributor: FBeetsEmissionDistributor = await deployFBeetsEmissionDistributor(0)
+    await expect(distributor.connect(bob).setFarmId(2)).to.be.revertedWith("AccessControl")
+    await expect(distributor.connect(alice).setFarmId(2)).to.be.revertedWith("AccessControl")
+  })
+
   it("mints 1 edfBEETS and deposits into masterchef farm", async () => {
     // there should only ever exist a maximum of 1 token which is minted and then deposited into the specified masterchef farm
     const distributor: FBeetsEmissionDistributor = await deployFBeetsEmissionDistributor()
@@ -289,7 +301,6 @@ describe("FBeetsEmissionDistributor", function () {
     return deployContract("FBeetsEmissionDistributor", [
       fidelioDuettoPool.address,
       beets.address,
-      wftm.address,
       beetsBar.address,
       locker.address,
       chef.address,
