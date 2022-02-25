@@ -3,27 +3,34 @@ pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "../interfaces/IBalancerVault.sol";
+import "./BalancerVault.sol";
 
-contract BalancerPool is IBalancerVault, ERC20("BalancerToken", "BPT") {
-    constructor(uint256 initialSupply) {
-        _mint(msg.sender, initialSupply);
+contract BalancerPool is ERC20 {
+    IBalancerVault vault;
+    IERC20[] public poolTokens;
+    bytes32 public poolId;
+
+    constructor(
+        string memory _name,
+        string memory _symbol,
+        uint256 _initialSupply,
+        IBalancerVault _vault,
+        IERC20[] memory _poolTokens
+    ) ERC20(_name, _symbol) {
+        poolTokens = _poolTokens;
+        vault = _vault;
+        _mint(msg.sender, _initialSupply);
     }
 
-    function joinPool(
-        bytes32,
-        address,
-        address recipient,
-        JoinPoolRequest memory request
-    ) external payable override {
-        ERC20(request.assets[0]).transferFrom(
-            msg.sender,
-            address(this),
-            request.maxAmountsIn[0]
-        );
-        _mint(recipient, request.maxAmountsIn[0]);
+    function register() external {
+        poolId = vault.registerPool();
     }
 
-    function mint(uint256 amount) external {
-        _mint(msg.sender, amount);
+    function mint(address recipient, uint256 amount) external {
+        _mint(recipient, amount);
+    }
+
+    function tokenList() external view returns (IERC20[] memory) {
+        return poolTokens;
     }
 }

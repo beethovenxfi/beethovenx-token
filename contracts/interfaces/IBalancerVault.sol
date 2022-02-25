@@ -3,8 +3,7 @@ pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-// for simplicity, we group the vault and the pool into 1
-interface IBalancerVault is IERC20 {
+interface IBalancerVault {
     enum JoinKind {
         INIT,
         EXACT_TOKENS_IN_FOR_BPT_OUT,
@@ -19,10 +18,21 @@ interface IBalancerVault is IERC20 {
         bool fromInternalBalance;
     }
 
+    function registerPool() external returns (bytes32 poolId);
+
     function joinPool(
         bytes32 poolId,
         address sender,
         address recipient,
         JoinPoolRequest memory request
     ) external payable;
+
+    function getPoolTokens(bytes32 poolId)
+        external
+        view
+        returns (
+            IERC20[] memory tokens,
+            uint256[] memory balances,
+            uint256 lastChangeBlock
+        );
 }
