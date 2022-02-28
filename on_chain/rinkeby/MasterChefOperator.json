@@ -1,0 +1,11 @@
+{
+  "contract": "MasterChefOperator",
+  "address": "0x5A4157e54B0FC06a83DaB0a200b3263285304d7b",
+  "args": [
+    "0x1517C0b9B35e0411266Bb0Ab7ac1a9d849De2ea0",
+    "0x70901Cf2Ef4F0EA786011B922eC08e39eC1C94C9",
+    "0x4fbe899d37fb7514adf2f41b0630e018ec275a0c",
+    "0x4fbe899d37fb7514adf2f41b0630e018ec275a0c"
+  ],
+  "verified": true
+}

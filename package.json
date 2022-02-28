@@ -43,6 +43,8 @@
     "lint": "yarn prettier && solhint -c .solhint.json contracts/**/*.sol",
     "prepublishOnly": "yarn run build && node scripts/prepublish.js",
     "transferOwnership": "ts-node -r dotenv/config --transpile-only scripts/transferOwnership.ts",
+    "approveERC20": "ts-node -r dotenv/config --transpile-only scripts/approveERC20.ts",
+    "balanceOf": "ts-node -r dotenv/config --transpile-only scripts/balanceOf.ts",
     "deploy": "ts-node -r dotenv/config --transpile-only scripts/deploy.ts",
     "verify": "ts-node -r dotenv/config --transpile-only scripts/verify.ts"
   },

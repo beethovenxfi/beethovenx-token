@@ -59,6 +59,10 @@ contract FBeetsEmissionDistributor is
         _setupRole(DISTRIBUTE_ROLE, admin);
     }
 
+    function setFarmId(uint256 id) external onlyRole(OPERATOR_ROLE) {
+        farmPid = id;
+    }
+
     function depositToChef() external onlyRole(OPERATOR_ROLE) {
         _mint(address(this), 1);
         _approve(address(this), address(chef), 1);
@@ -101,15 +105,17 @@ contract FBeetsEmissionDistributor is
 
             // Only distribute to BPTs if lockersShare is less than 100%
             if (fBeetsLockerShare < DENOMINATOR) {
-                // the rest we convert to fBeets and share with all fBeets holders
-                // we cannot assign fix size arrays to dynamic arrays, so we do this thing...
-                address[] memory assets = new address[](1);
-                assets[0] = address(beets);
-                uint256[] memory amountsIn = new uint256[](1);
-                amountsIn[0] = beets.balanceOf(address(this));
+                (IERC20[] memory tokens, , ) = vault.getPoolTokens(
+                    fidelioDuettoPoolId
+                );
+                address[] memory assets = new address[](tokens.length);
+                uint256[] memory amountsIn = new uint256[](assets.length);
+                for (uint256 i = 0; i < tokens.length; i++) {
+                    assets[i] = address(tokens[i]);
+                    amountsIn[i] = tokens[i].balanceOf(address(this));
+                    tokens[i].approve(address(vault), amountsIn[i]);
+                }
                 uint256 minBptOut = 0;
-
-                beets.approve(address(vault), amountsIn[0]);
 
                 vault.joinPool(
                     fidelioDuettoPoolId,

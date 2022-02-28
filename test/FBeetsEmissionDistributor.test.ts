@@ -1,6 +1,15 @@
 import { advanceBlocks, advanceTime, advanceTimeAndBlock, bn, deployChef, deployContract, deployERC20Mock, encodeParameters } from "./utilities"
 import { ethers } from "hardhat"
-import { BalancerPool, BeethovenxMasterChef, BeethovenxToken, BeetsBar, ERC20Mock, FBeetsLocker, FBeetsEmissionDistributor } from "../types"
+import {
+  BalancerPool,
+  BeethovenxMasterChef,
+  BeethovenxToken,
+  BeetsBar,
+  ERC20Mock,
+  FBeetsLocker,
+  FBeetsEmissionDistributor,
+  BalancerVault,
+} from "../types"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 import { expect } from "chai"
 import { BigNumber } from "ethers"
@@ -11,9 +20,11 @@ describe("FBeetsEmissionDistributor", function () {
 
   const INITIAL_FBEETS_LOCKER_SHARE = 500
 
+  let wftm: ERC20Mock
   let beets: BeethovenxToken
   let chef: BeethovenxMasterChef
   let beetsPerBlock: BigNumber = bn(1)
+  let balancerVault: BalancerVault
   let fidelioDuettoPool: BalancerPool
   let beetsBar: BeetsBar
   let locker: FBeetsLocker
@@ -31,10 +42,21 @@ describe("FBeetsEmissionDistributor", function () {
   })
 
   beforeEach(async function () {
+    wftm = await deployERC20Mock("Fantom", "FTM", 10_000)
     beets = await deployContract<BeethovenxToken>("BeethovenxToken", [])
     chef = await deployChef(beets.address, owner.address, beetsPerBlock)
     await beets.transferOwnership(chef.address)
-    fidelioDuettoPool = await deployContract("BalancerPool", [bn(10_000)])
+
+    balancerVault = await deployContract("BalancerVault", [])
+    fidelioDuettoPool = await deployContract("BalancerPool", [
+      "Fidelio Duetto",
+      "BPT-Fidelio",
+      bn(10_000),
+      balancerVault.address,
+      [beets.address, wftm.address],
+    ])
+    await fidelioDuettoPool.register()
+
     beetsBar = await deployContract("BeetsBar", [fidelioDuettoPool.address])
     locker = await deployContract<FBeetsLocker>("FBeetsLocker", [beetsBar.address, EPOCH_DURATION, LOCK_DURATION])
   })
@@ -50,6 +72,18 @@ describe("FBeetsEmissionDistributor", function () {
     expect(await distributor.hasRole(await distributor.OPERATOR_ROLE(), owner.address)).to.be.true
     expect(await distributor.hasRole(await distributor.DISTRIBUTE_ROLE(), owner.address)).to.be.true
     expect(await distributor.hasRole(await distributor.DEFAULT_ADMIN_ROLE(), owner.address)).to.be.true
+  })
+
+  it("allows changing of master chef farm ID by the operator", async () => {
+    const distributor: FBeetsEmissionDistributor = await deployFBeetsEmissionDistributor(0)
+    await distributor.setFarmId(2)
+    expect(await distributor.farmPid()).to.equal(2)
+  })
+
+  it("allows only operator to change master chef farm ID", async () => {
+    const distributor: FBeetsEmissionDistributor = await deployFBeetsEmissionDistributor(0)
+    await expect(distributor.connect(bob).setFarmId(2)).to.be.revertedWith("AccessControl")
+    await expect(distributor.connect(alice).setFarmId(2)).to.be.revertedWith("AccessControl")
   })
 
   it("mints 1 edfBEETS and deposits into masterchef farm", async () => {
@@ -232,8 +266,6 @@ describe("FBeetsEmissionDistributor", function () {
   })
 
   it("distributes remaining share to all fBeets holders by accruing value", async () => {
-    // With the remaining beets (total emissions - locked share) we join single sided the fidelio duetto pool and share the resulting beets as revenue with fBeets holders
-
     const distributor: FBeetsEmissionDistributor = await deployFBeetsEmissionDistributor()
     await chef.add(10, distributor.address, ethers.constants.AddressZero)
 
@@ -274,7 +306,7 @@ describe("FBeetsEmissionDistributor", function () {
       chef.address,
       farmPid,
       INITIAL_FBEETS_LOCKER_SHARE,
-      fidelioDuettoPool.address,
+      balancerVault.address,
       encodeParameters(["address"], [fidelioDuettoPool.address]),
       admin,
     ])
