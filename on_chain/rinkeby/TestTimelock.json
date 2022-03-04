@@ -1,6 +1,0 @@
-{
-  "contract": "Timelock",
-  "address": "0x8c99AF2B7E880d660c03dBf9F4c81ab32e2E0347",
-  "args": ["0x4fbe899d37fb7514adf2f41b0630e018ec275a0c", "300"],
-  "verified": true
-}
