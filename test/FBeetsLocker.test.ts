@@ -8,7 +8,6 @@ import {
   bn,
   deployContract,
   deployERC20Mock,
-  duration,
   getBlockTime,
   latest,
   setAutomineBlocks,
@@ -21,7 +20,7 @@ import { BigNumber } from "ethers"
 describe("fBeets locking contract", function () {
   const DENOMINATOR = 10000
   const EPOCH_DURATION = 86400 * 7
-  const LOCK_DURATION = EPOCH_DURATION * 17
+  const LOCK_DURATION = EPOCH_DURATION * 16
 
   let bpt: ERC20Mock
   let fBeets: BeetsBar
@@ -128,12 +127,12 @@ describe("fBeets locking contract", function () {
 
     const startEpoch = await currentEpoch()
 
-    // we advance the time 2 weeks
+    // we advance 2 weeks
     await advanceTimeAndBlock(2 * oneWeekInSeconds)
 
     /*
         after contract creation it created the current epoch (at deploy time),
-        now we are 2 weeks ahead, meaning that last & current epoch should be missing
+        now we are 2 weeks ahead, meaning that last, current and next epoch should be missing
         and therefore filled in on a `lock` or `checkpointEpoch` call
      */
     const actualFirstEpoch = await locker.epochs(0)
@@ -150,20 +149,24 @@ describe("fBeets locking contract", function () {
 
     const actualThirdEpoch = await locker.epochs(2)
     expect(actualThirdEpoch.startTime).to.equal(startEpoch + 2 * oneWeekInSeconds)
-    expect(actualThirdEpoch.supply).to.equal(lockAmount)
+    expect(actualThirdEpoch.supply).to.equal(0)
+
+    const actualFourthEpoch = await locker.epochs(3)
+    expect(actualFourthEpoch.startTime).to.equal(startEpoch + 3 * oneWeekInSeconds)
+    expect(actualFourthEpoch.supply).to.equal(lockAmount)
   })
 
-  it("locks token from start of current epoch (last thursday) for 17 weeks", async () => {
+  it("locks token from start of next epoch for 16 weeks", async () => {
     /*
-        tokens get locked from the start of the currently running epoch for 17 weeks. this means if you enter at wednesday,
+        tokens get locked from the start of the next epoch for 16 weeks. this means if you enter at wednesday,
         which is the last day of the epoch, your tokens will be locked for 16 weeks + 1day. Therefore, if you lock your tokens on
         a thursday at 12:00 UTC, your total lock time will be 16 weeks + 12 hours.
 
         We expect
           - locked amount is transferred from user to contract
           - the locked amount is added to the users total balance
-          - the locked amount is added to the user locking period (start of epoch + total lock duration)
-          - locked amount is added to the epoch
+          - the locked amount is added to the user locking period (start of next epoch + total lock duration)
+          - locked amount is added to the next epoch
           - locked amount is added to global locked amount
           - emits Locked event with locked amount for user address
      */
@@ -174,35 +177,35 @@ describe("fBeets locking contract", function () {
     // we lock those fBeets up!
     await fBeets.connect(bob).approve(locker.address, expectedLockedAmount)
 
+    const lockingEpoch = (await currentEpoch()) + EPOCH_DURATION
+
     await expect(locker.connect(bob).lock(bob.address, expectedLockedAmount))
       .to.emit(locker, "Locked")
-      .withArgs(bob.address, expectedLockedAmount, await currentEpoch())
+      .withArgs(bob.address, expectedLockedAmount, lockingEpoch)
 
     // check if tokens have been transferred
     expect(await fBeets.balanceOf(bob.address)).to.equal(0)
     expect(await fBeets.balanceOf(locker.address)).to.equal(expectedLockedAmount)
 
-    // we always keep the total amount of locked tokens over all users
     expect(await locker.totalLockedSupply()).to.equal(expectedLockedAmount)
 
-    // we also keep the total amount of locked tokens for each user
     const userBalance = await locker.balances(bob.address)
     expect(userBalance.lockedAmount).to.equal(expectedLockedAmount)
 
-    // then we keep the total amount of locked tokens for each epoch
-    const epoch = await locker.epochs(0)
+    // amount should be locked in the second epoch where epoch 0 is the current epoch and epoch 1 is the next
+    const epoch = await locker.epochs(1)
 
-    expect(epoch.startTime).to.equal(await currentEpoch())
+    expect(epoch.startTime).to.equal(lockingEpoch)
     expect(epoch.supply).to.equal(expectedLockedAmount)
 
     /*
-        for each lock period, which lasts from the start of the current epoch + 17 weeks, an entry
+        for each lock period, which lasts from the start of the next epoch + 16 weeks, an entry
         is created with the unlock time and the amount of tokens locked in this period
      */
 
     const userLock = await locker.userLocks(bob.address, 0)
     expect(userLock.locked).to.equal(expectedLockedAmount)
-    expect(userLock.unlockTime).to.equal((await currentEpoch()) + LOCK_DURATION)
+    expect(userLock.unlockTime).to.equal(lockingEpoch + LOCK_DURATION)
   })
 
   it("adds locked amount to same user lock period when locking multiple times within the same epoch", async () => {
@@ -211,12 +214,9 @@ describe("fBeets locking contract", function () {
 
         ATTENTION: this test may fail when time passes to new epoch between 2 lock calls
      */
-    const firstEpoch = await currentEpoch()
+    const firstEpoch = (await currentEpoch()) + EPOCH_DURATION
     const firstLockAmount = bn(100)
     await mintFBeets(bob, firstLockAmount)
-
-    // lets advance 1 epoch
-    await advanceTimeAndBlock(EPOCH_DURATION)
 
     await fBeets.connect(bob).approve(locker.address, firstLockAmount)
     await locker.connect(bob).lock(bob.address, firstLockAmount)
@@ -229,7 +229,7 @@ describe("fBeets locking contract", function () {
     await fBeets.connect(bob).approve(locker.address, secondLockAmount)
     await locker.connect(bob).lock(bob.address, secondLockAmount)
 
-    const expectedUnlockTime = firstEpoch + EPOCH_DURATION + LOCK_DURATION
+    const expectedUnlockTime = firstEpoch + LOCK_DURATION
     const actualUserLock = await locker.userLocks(bob.address, 0)
 
     expect(actualUserLock.locked).to.equal(firstLockAmount.add(secondLockAmount))
@@ -247,17 +247,17 @@ describe("fBeets locking contract", function () {
     await locker.connect(bob).lock(bob.address, expectedLockedAmount)
     // now we advance the time to 1 sec before unlock time
     await advanceToTime((await currentEpoch()) + LOCK_DURATION - 1)
-    await expect(locker.connect(bob).processExpiredLocks(false, bob.address)).to.revertedWith("No expired locks present")
+    await expect(locker.connect(bob).processExpiredLocks(false)).to.revertedWith("No expired locks present")
   })
   it("reverts if the user has no locks", async () => {
-    await expect(locker.connect(bob).processExpiredLocks(false, bob.address)).to.revertedWith("Account has no locks")
+    await expect(locker.connect(bob).processExpiredLocks(false)).to.revertedWith("Account has no locks")
   })
 
   it("withdraws all expired locks to specified account", async () => {
     /*
         we should be able to withdraw all expired locks where unlock time has passed
      */
-    const firstEpoch = await currentEpoch()
+    const firstEpoch = (await currentEpoch()) + EPOCH_DURATION
     const firstLockAmount = bn(100)
     await mintFBeets(bob, firstLockAmount)
 
@@ -286,9 +286,7 @@ describe("fBeets locking contract", function () {
     // now we advance to the unlock time of the first lock
     await advanceToTime(firstUnlockTime)
     // we trigger unlocking which should also emit the Withdrawn event
-    await expect(locker.connect(bob).processExpiredLocks(false, bob.address))
-      .to.emit(locker, "Withdrawn")
-      .withArgs(bob.address, firstLockAmount, false)
+    await expect(locker.connect(bob).processExpiredLocks(false)).to.emit(locker, "Withdrawn").withArgs(bob.address, firstLockAmount, false)
 
     /*
         now the amount of the first lock should be back at bob and subtracted
@@ -307,7 +305,7 @@ describe("fBeets locking contract", function () {
     await advanceToTime(secondUnlockTime)
 
     // we trigger unlocking again but this time we withdraw to alice
-    await expect(locker.connect(bob).processExpiredLocks(false, alice.address))
+    await expect(locker.connect(bob).withdrawExpiredLocksTo(alice.address))
       .to.emit(locker, "Withdrawn")
       .withArgs(bob.address, secondLockAmount, false)
     expect(await fBeets.balanceOf(alice.address)).to.equal(secondLockAmount)
@@ -319,18 +317,20 @@ describe("fBeets locking contract", function () {
     expect(userBalanceAfterSecondWithdraw.nextUnlockIndex).to.equal(2)
   })
 
-  it("allows to relock expired locks", async () => {
-    const firstEpoch = await currentEpoch()
+  it("allows to relock expired locks for the current epoch", async () => {
     /*
-        expired locks can also be relocked instead of withdrawn, we can also relock them
-        to a different account
+        when relocking, you can relock for the current epoch thus avoiding waiting for the new epoch
+     */
+    const firstEpoch = (await currentEpoch()) + EPOCH_DURATION
+    /*
+        expired locks can also be relocked instead of withdrawn
      */
     const firstLockAmount = bn(100)
     await mintFBeets(bob, firstLockAmount)
 
     await fBeets.connect(bob).approve(locker.address, firstLockAmount)
     await locker.connect(bob).lock(bob.address, firstLockAmount)
-    const firstUnlockTime = (await currentEpoch()) + LOCK_DURATION
+    const firstUnlockTime = firstEpoch + LOCK_DURATION
 
     // lets advance 1 epoch so we lock in 2 periods
     await advanceTimeAndBlock(EPOCH_DURATION)
@@ -340,6 +340,7 @@ describe("fBeets locking contract", function () {
 
     await fBeets.connect(bob).approve(locker.address, secondLockAmount)
     await locker.connect(bob).lock(bob.address, secondLockAmount)
+    // second lock will be in the 3rd epoch
     const secondUnlockTime = firstEpoch + EPOCH_DURATION + LOCK_DURATION
 
     await advanceToTime(firstUnlockTime)
@@ -348,7 +349,7 @@ describe("fBeets locking contract", function () {
        we trigger relocking which should also emit the Withdrawn event and then emit again the Lock
        event
      */
-    await expect(locker.connect(bob).processExpiredLocks(true, bob.address))
+    await expect(locker.connect(bob).processExpiredLocks(true))
       .to.emit(locker, "Withdrawn")
       .withArgs(bob.address, firstLockAmount, true)
       .to.emit(locker, "Locked")
@@ -356,10 +357,10 @@ describe("fBeets locking contract", function () {
 
     // now a third user lock with the relocked amount should have been created
 
-    const bobsNewLockAfterFirstRelock = await locker.userLocks(bob.address, 2)
+    const bobsThirdLock = await locker.userLocks(bob.address, 2)
 
-    expect(bobsNewLockAfterFirstRelock.locked).to.equal(firstLockAmount)
-    expect(bobsNewLockAfterFirstRelock.unlockTime).to.equal(firstEpoch + LOCK_DURATION + LOCK_DURATION)
+    expect(bobsThirdLock.locked).to.equal(firstLockAmount)
+    expect(bobsThirdLock.unlockTime).to.equal(firstEpoch + LOCK_DURATION + LOCK_DURATION)
     // total supply & user balance should still be the full amount
     expect(await locker.totalLockedSupply()).to.equal(firstLockAmount.add(secondLockAmount))
     const bobsBalanceAfterFirstRelock = await locker.balances(bob.address)
@@ -370,31 +371,26 @@ describe("fBeets locking contract", function () {
     // now advance to unlock time of second lock period
     await advanceToTime(secondUnlockTime)
 
-    // we trigger unlocking again but this time we relock to alice
-    await expect(locker.connect(bob).processExpiredLocks(true, alice.address))
+    // we trigger unlocking again
+    await expect(locker.connect(bob).processExpiredLocks(true))
       .to.emit(locker, "Withdrawn")
       .withArgs(bob.address, secondLockAmount, true)
       .to.emit(locker, "Locked")
-      .withArgs(alice.address, secondLockAmount, secondUnlockTime)
+      .withArgs(bob.address, secondLockAmount, secondUnlockTime)
 
     // now a first user lock with the relocked amount should have been created for alice
-    const aliceFirstLock = await locker.userLocks(alice.address, 0)
+    const bobsFourthLock = await locker.userLocks(bob.address, 3)
 
-    expect(aliceFirstLock.locked).to.equal(secondLockAmount)
-    expect(aliceFirstLock.unlockTime).to.equal(firstEpoch + EPOCH_DURATION + LOCK_DURATION + LOCK_DURATION)
+    expect(bobsFourthLock.locked).to.equal(secondLockAmount)
+    expect(bobsFourthLock.unlockTime).to.equal(firstEpoch + EPOCH_DURATION + LOCK_DURATION + LOCK_DURATION)
     // total supply & user balance should still be the full amount
     expect(await locker.totalLockedSupply()).to.equal(firstLockAmount.add(secondLockAmount))
 
-    // bob should have only have first amount as balance left
+    // bob  should still have the amount of both locks
     const bobsBalanceAfterSecondRelock = await locker.balances(bob.address)
-    expect(bobsBalanceAfterSecondRelock.lockedAmount).to.equal(firstLockAmount)
+    expect(bobsBalanceAfterSecondRelock.lockedAmount).to.equal(firstLockAmount.add(secondLockAmount))
     // both locks have been processed, so next one to check would be index 2
     expect(bobsBalanceAfterSecondRelock.nextUnlockIndex).to.equal(2)
-
-    // alice should have bobs first amount as balance and index 0 for next unlock index since no unlocks have been processes yet
-    const aliceBalanceAfterSecondRelock = await locker.balances(alice.address)
-    expect(aliceBalanceAfterSecondRelock.lockedAmount).to.equal(secondLockAmount)
-    expect(aliceBalanceAfterSecondRelock.nextUnlockIndex).to.equal(0)
   })
 
   it("allows withdrawal of all tokens (locked or unlocked) when in shutdown", async () => {
@@ -422,7 +418,7 @@ describe("fBeets locking contract", function () {
     await advanceToTime(firstUnlockTime, true)
     await locker.shutdown()
     expect(await locker.isShutdown()).to.be.true
-    await locker.connect(bob).processExpiredLocks(false, bob.address)
+    await locker.connect(bob).processExpiredLocks(false)
     expect(await fBeets.balanceOf(bob.address)).to.equal(firstLockAmount.add(secondLockAmount))
   })
 
@@ -437,20 +433,19 @@ describe("fBeets locking contract", function () {
     expect(await fBeets.balanceOf(bob.address)).to.be.equal(lockAmount)
   })
 
-  it("includes all locked tokens which are not expired except the ones for the current epoch in the user balanceOf", async () => {
+  it("includes all locked tokens which are not expired or in the future balanceOf", async () => {
     /*
-        the `balanceOf(user)` call includes all locked tokens which are NOT:
-         -  part of the current epoch
-         - expired (unlock time > current time)
+        the `balanceOf(user)` call includes all locked tokens which are not expired
 
          we create the following setup:
           - 1 lock expired
           - 1 lock from previous epoch (eligible)
-          - 1 lock in current epoch
+          - 1 new lock which will be in the next (future epoch)
+          - 1 relocked
 
      */
 
-    const firstUnlockTime = (await currentEpoch()) + LOCK_DURATION
+    const firstUnlockTime = (await currentEpoch()) + EPOCH_DURATION + LOCK_DURATION
     const firstLockAmount = bn(100)
     await mintFBeets(bob, firstLockAmount)
     await fBeets.connect(bob).approve(locker.address, firstLockAmount)
@@ -463,8 +458,19 @@ describe("fBeets locking contract", function () {
     await fBeets.connect(bob).approve(locker.address, secondLockAmount)
     await locker.connect(bob).lock(bob.address, secondLockAmount)
 
-    // now we advance to the first unlock time so they are not eligible anymore
-    await advanceToTime(firstUnlockTime)
+    // now we advance to the first unlock time and relock them
+
+    // now we advance to the second unlock time
+    await advanceToTime(firstUnlockTime, true)
+
+    // the first lock is now not eligible anymore
+    expect(await locker.balanceOf(bob.address)).to.equal(secondLockAmount)
+    // now we relock them which should make them eligible again immediately
+    await locker.connect(bob).processExpiredLocks(true)
+    expect(await locker.balanceOf(bob.address)).to.equal(firstLockAmount.add(secondLockAmount))
+
+    // now we expire the second lock
+    await advanceToTime(firstUnlockTime + EPOCH_DURATION)
 
     // we lock more beets in this epoch which should not be eligible
     const thirdLockAmount = bn(300)
@@ -472,7 +478,7 @@ describe("fBeets locking contract", function () {
     await fBeets.connect(bob).approve(locker.address, thirdLockAmount)
     await locker.connect(bob).lock(bob.address, thirdLockAmount)
 
-    expect(await locker.balanceOf(bob.address)).to.equal(secondLockAmount)
+    expect(await locker.balanceOf(bob.address)).to.equal(firstLockAmount)
   })
 
   it("returns balanceOf for a specific epoch", async () => {
@@ -480,7 +486,7 @@ describe("fBeets locking contract", function () {
         we can also get the balanceOf at a specific epoch, the epoch we provide does
         not count towards it. so its as the epoch we provide is the current epoch
      */
-    const firstEpoch = await currentEpoch()
+    const firstEpoch = (await currentEpoch()) + EPOCH_DURATION
 
     // if there are no locks, it should return 0
     expect(await locker.balanceAtEpochOf(0, bob.address)).to.equal(0)
@@ -517,11 +523,11 @@ describe("fBeets locking contract", function () {
   it("returns total locked supply", async () => {
     /*
         the totalSupply should return the total amount of properly locked tokens, meaning
-        no expired locks and also not locks of the current epoch. So we create an expired lock, an active
-        lock and a lock for the current epoch
+        no expired locks and also not locks of a future epoch. So we create an expired lock, an active
+        lock and a lock for the next epoch
      */
 
-    const firstEpoch = await currentEpoch()
+    const firstEpoch = (await currentEpoch()) + EPOCH_DURATION
     const firstUnlockTime = firstEpoch + LOCK_DURATION
 
     const expiredLockAmount = bn(100)
@@ -539,7 +545,7 @@ describe("fBeets locking contract", function () {
     // now we advance to the first unlock time so they are not eligible anymore
     await advanceToTime(firstUnlockTime)
 
-    const currentEpochLockAmount = bn(200)
+    const currentEpochLockAmount = bn(400)
     await mintFBeets(carol, currentEpochLockAmount)
     await fBeets.connect(carol).approve(locker.address, currentEpochLockAmount)
     await locker.connect(carol).lock(carol.address, currentEpochLockAmount)
@@ -561,7 +567,7 @@ describe("fBeets locking contract", function () {
     /*
         we can also get the total locked supply for a specific epoch index
      */
-    const firstEpoch = await currentEpoch()
+    const firstEpoch = (await currentEpoch()) + EPOCH_DURATION
 
     const firstLockAmount = bn(100)
     await mintFBeets(bob, firstLockAmount)
@@ -577,7 +583,7 @@ describe("fBeets locking contract", function () {
 
     await advanceTimeAndBlock(EPOCH_DURATION)
 
-    const thirdLockAmount = bn(200)
+    const thirdLockAmount = bn(300)
     await mintFBeets(carol, thirdLockAmount)
     await fBeets.connect(carol).approve(locker.address, thirdLockAmount)
     await locker.connect(carol).lock(carol.address, thirdLockAmount)
@@ -599,7 +605,8 @@ describe("fBeets locking contract", function () {
 
     await locker.checkpointEpoch()
     const epochCount = await locker.epochCount()
-    expect(await locker.totalSupplyAtEpoch(epochCount.toNumber() - 1)).to.equal(secondLockAmount.add(thirdLockAmount))
+    // the last epoch is the upcoming next epoch, so we need the 2nd last epoch
+    expect(await locker.totalSupplyAtEpoch(epochCount.toNumber() - 2)).to.equal(secondLockAmount.add(thirdLockAmount))
   })
 
   it("returns the total locked token supply of a user", async () => {
@@ -619,9 +626,10 @@ describe("fBeets locking contract", function () {
   it("finds the matching epoch of a timestamp", async () => {
     // lets create 10 epochs
     const firstEpoch = await currentEpoch()
-    await advanceTime(EPOCH_DURATION * 10)
+    // so we need 9 more epochs
+    await advanceTime(EPOCH_DURATION * 9)
 
-    // fill in 10 epochs plus the next one
+    // fill in 10 epochs plus the next upcoming one
     await locker.checkpointEpoch()
     expect(await locker.epochCount()).to.equal(11)
 
@@ -644,9 +652,8 @@ describe("fBeets locking contract", function () {
          - active locking periods with unlock time and amount
      */
 
-    const firstEpoch = await currentEpoch()
+    const firstEpoch = (await currentEpoch()) + EPOCH_DURATION
 
-    const firstUnlockTime = firstEpoch + LOCK_DURATION
     const firstLockAmount = bn(100)
     await mintFBeets(bob, firstLockAmount)
     await fBeets.connect(bob).approve(locker.address, firstLockAmount)
@@ -660,7 +667,8 @@ describe("fBeets locking contract", function () {
     await locker.connect(bob).lock(bob.address, secondLockAmount)
 
     // now we make both locks expired
-    await advanceToTime(firstEpoch + EPOCH_DURATION + LOCK_DURATION)
+    const secondLockUnlockTime = firstEpoch + EPOCH_DURATION + EPOCH_DURATION + LOCK_DURATION
+    await advanceToTime(secondLockUnlockTime)
 
     // and create 2 more locks which are active
     const thirdLockAmount = bn(300)
@@ -680,8 +688,8 @@ describe("fBeets locking contract", function () {
     expect(lockedBalances.unlockable).to.equal(firstLockAmount.add(secondLockAmount))
     expect(lockedBalances.total).to.equal(firstLockAmount.add(secondLockAmount).add(thirdLockAmount).add(fourthLockedAmount))
     expect(lockedBalances.lockData).to.deep.equal([
-      [thirdLockAmount, bn(firstEpoch + EPOCH_DURATION + LOCK_DURATION + LOCK_DURATION, 0)],
-      [fourthLockedAmount, bn(firstEpoch + EPOCH_DURATION * 2 + LOCK_DURATION + LOCK_DURATION, 0)],
+      [thirdLockAmount, bn(secondLockUnlockTime + EPOCH_DURATION + LOCK_DURATION, 0)],
+      [fourthLockedAmount, bn(secondLockUnlockTime + EPOCH_DURATION * 2 +  LOCK_DURATION, 0)],
     ])
   })
 
@@ -1058,7 +1066,7 @@ describe("fBeets locking contract", function () {
 
     // now we advance by lock duration + kick delay
     const kickEpochDelay = await locker.kickRewardEpochDelay()
-    await advanceTime(LOCK_DURATION + EPOCH_DURATION * kickEpochDelay.toNumber())
+    await advanceTime(EPOCH_DURATION + LOCK_DURATION + EPOCH_DURATION * kickEpochDelay.toNumber())
 
     // now we should be able to kick bob out with an incentive of 1 epoch overdue
     await locker.connect(alice).kickExpiredLocks(bob.address)
@@ -1086,7 +1094,7 @@ describe("fBeets locking contract", function () {
     await fBeets.connect(carol).approve(locker.address, carolSecondLockAmount)
     await locker.connect(carol).lock(carol.address, carolSecondLockAmount)
 
-    await advanceTime(LOCK_DURATION + EPOCH_DURATION * kickEpochDelay.toNumber())
+    await advanceTime(EPOCH_DURATION + LOCK_DURATION + EPOCH_DURATION * kickEpochDelay.toNumber())
 
     // we create another lock which is still good
     const thirdLockAmount = bn(100)
