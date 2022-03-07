@@ -201,7 +201,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             return rewardData[_rewardToken].rewardPerTokenStored;
         }
 
-        Reward memory reward = rewardData[_rewardToken];
+        Reward storage reward = rewardData[_rewardToken];
         uint256 secondsSinceLastApplicableRewardTime = _lastTimeRewardApplicable(
                 reward.periodFinish
             ) - reward.lastUpdateTime;
@@ -304,10 +304,10 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             }
         }
 
-        //also remove amount in the current epoch
+        //also remove amount in the next (future) epoch
         if (
             locksLength > 0 &&
-            locks[locksLength - 1].unlockTime - lockDuration == _currentEpoch()
+            locks[locksLength - 1].unlockTime - lockDuration > _currentEpoch()
         ) {
             amount = amount - locks[locksLength - 1].locked;
         }
@@ -342,7 +342,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             uint256 lockEpoch = locks[currentLockIndex].unlockTime -
                 lockDuration;
 
-            if (lockEpoch < epochStartTime) {
+            if (lockEpoch <= epochStartTime) {
                 if (lockEpoch > cutoffEpoch) {
                     amount += locks[currentLockIndex].locked;
                 } else {
@@ -360,13 +360,13 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         uint256 currentEpoch = _currentEpoch();
         uint256 cutoffEpoch = currentEpoch - lockDuration;
         uint256 epochIndex = epochs.length;
-
-        //do not include current epoch's supply
-        if (epochs[epochIndex - 1].startTime == currentEpoch) {
-            epochIndex--;
-        }
         if (epochIndex == 0) {
             return 0;
+        }
+
+        // remove future epoch amount
+        if (epochs[epochIndex - 1].startTime > currentEpoch) {
+            epochIndex--;
         }
 
         //traverse inversely to make more current queries more gas efficient
@@ -396,24 +396,16 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         uint256 epochStart = epochs[_epochIndex].startTime;
 
         uint256 cutoffEpoch = epochStart - lockDuration;
-        //        uint256 currentEpoch = _currentEpoch();
-        //
-        //        //do not include current epoch's supply
-        //        if (epochs[_epochIndex].startTime == currentEpoch) {
-        //            _epochIndex--;
-        //        }
-
         uint256 currentIndex = _epochIndex;
 
         //traverse inversely to make more current queries more gas efficient
-        // the provided epoch is not counted since its treated as the 'current' epoch
         do {
-            currentIndex--;
             Epoch storage epoch = epochs[currentIndex];
             if (epoch.startTime <= cutoffEpoch) {
                 break;
             }
             supply += epochs[currentIndex].supply;
+            currentIndex--;
         } while (currentIndex > 0);
 
         return supply;
@@ -488,13 +480,14 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
     //insert a new epoch if needed. fill in any gaps
     function _checkpointEpoch() internal {
-        uint256 currentEpoch = _currentEpoch();
+        //create new epoch in the future where new non-active locks will lock to
+        uint256 nextEpoch = _currentEpoch() + epochDuration;
 
         //check to add
         //first epoch add in constructor, no need to check 0 length
-        if (epochs[epochs.length - 1].startTime < currentEpoch) {
+        if (epochs[epochs.length - 1].startTime < nextEpoch) {
             //fill any epoch gaps
-            while (epochs[epochs.length - 1].startTime != currentEpoch) {
+            while (epochs[epochs.length - 1].startTime != nextEpoch) {
                 uint256 nextEpochDate = epochs[epochs.length - 1].startTime +
                     epochDuration;
                 epochs.push(Epoch({supply: 0, startTime: nextEpochDate}));
@@ -514,10 +507,14 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         lockingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         //lock
-        _lock(_user, _amount);
+        _lock(_user, _amount, false);
     }
 
-    function _lock(address _account, uint256 _amount) internal {
+    function _lock(
+        address _account,
+        uint256 _amount,
+        bool _relock
+    ) internal {
         require(_amount > 0, "Cannot lock 0 tokens");
         require(!isShutdown, "Contract is in shutdown");
 
@@ -532,8 +529,11 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         totalLockedSupply += _amount;
 
         //add user lock records or add to current
-        uint256 currentEpochStartTime = _currentEpoch();
-        uint256 unlockTime = currentEpochStartTime + lockDuration; // lock duration = 16 weeks + current week = 17 weeks
+        uint256 lockStartEpoch = _currentEpoch();
+        if (!_relock) {
+            lockStartEpoch += epochDuration;
+        }
+        uint256 unlockTime = lockStartEpoch + lockDuration; // lock duration = 16 weeks + current week = 17 weeks
 
         uint256 idx = userLocks[_account].length;
         // if its the first lock or the last lock has shorter unlock time than this lock
@@ -542,15 +542,56 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
                 LockedBalance({locked: _amount, unlockTime: unlockTime})
             );
         } else {
-            LockedBalance storage userLock = userLocks[_account][idx - 1];
-            userLock.locked += _amount;
+            //if latest lock is further in the future, lower index
+            //this can only happen if relocking an expired lock after creating a new lock
+            if (userLocks[_account][idx - 1].unlockTime > unlockTime) {
+                idx--;
+            }
+
+            //if idx points to the epoch when same unlock time, update
+            //(this is always true with a normal lock but maybe not with relock)
+            if (userLocks[_account][idx - 1].unlockTime == unlockTime) {
+                LockedBalance storage userLock = userLocks[_account][idx - 1];
+                userLock.locked += _amount;
+            } else {
+                //can only enter here if a relock is made after a lock and there's no lock entry
+                //for the current epoch.
+                //ex a list of locks such as "[...][older][current*][next]" but without a "current" lock
+                //length - 1 is the next epoch
+                //length - 2 is a past epoch
+                //thus need to insert an entry for current epoch at the 2nd to last entry
+                //we will copy and insert the tail entry(next) and then overwrite length-2 entry
+
+                //reset idx
+                idx = userLocks[_account].length;
+
+                //get current last item
+                LockedBalance storage userLock = userLocks[_account][idx - 1];
+
+                //add a copy to end of list
+                userLocks[_account].push(
+                    LockedBalance({
+                        locked: userLock.locked,
+                        unlockTime: userLock.unlockTime
+                    })
+                );
+
+                //insert current epoch lock entry by overwriting the entry at length-2
+                userLock.locked = _amount;
+                userLock.unlockTime = unlockTime;
+            }
         }
 
         //update epoch supply, epoch checkpointed above so safe to add to latest
-        Epoch storage currentEpoch = epochs[epochs.length - 1];
+        uint256 epochIndex = epochs.length - 1;
+        //if relock, epoch should be current and not next, thus need to decrease index to length-2
+        if (_relock) {
+            epochIndex--;
+        }
+        Epoch storage currentEpoch = epochs[epochIndex];
         currentEpoch.supply += _amount;
 
-        emit Locked(_account, _amount, currentEpochStartTime);
+        emit Locked(_account, _amount, lockStartEpoch);
     }
 
     /// @notice Withdraw all currently locked tokens where the unlock time has passed
@@ -649,21 +690,23 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
 
         //relock or return to user
         if (_relock) {
-            _lock(_withdrawTo, unlockedAmount);
+            _lock(_withdrawTo, unlockedAmount, true);
         } else {
             // transfer unlocked amount - kick reward (if present)
             lockingToken.safeTransfer(_withdrawTo, unlockedAmount);
         }
     }
 
+    /// @notice withdraw expired locks to a different address
+    /// @param _withdrawTo address to withdraw expired locks to
+    function withdrawExpiredLocksTo(address _withdrawTo) external nonReentrant {
+        _processExpiredLocks(msg.sender, false, _withdrawTo, msg.sender, 0);
+    }
+
     /// @notice Withdraw/relock all currently locked tokens where the unlock time has passed
     /// @param _relock Relock all expired locks
-    /// @param _withdrawTo Where to withdraw unlocked tokens to in case of no re-lock
-    function processExpiredLocks(bool _relock, address _withdrawTo)
-        external
-        nonReentrant
-    {
-        _processExpiredLocks(msg.sender, _relock, _withdrawTo, msg.sender, 0);
+    function processExpiredLocks(bool _relock) external nonReentrant {
+        _processExpiredLocks(msg.sender, _relock, msg.sender, msg.sender, 0);
     }
 
     /// @notice Kick expired locks of `_user` and collect kick reward
