@@ -693,6 +693,26 @@ describe("fBeets locking contract", function () {
     ])
   })
 
+  it('returns pending upcoming locks in the next epoch', async () => {
+    // new locks get added to the next epoch, we want to be able to get the amount of those
+    const firstEpoch = (await currentEpoch()) + EPOCH_DURATION
+
+    const firstLockAmount = bn(100)
+    await mintFBeets(bob, firstLockAmount)
+    await fBeets.connect(bob).approve(locker.address, firstLockAmount)
+    await locker.connect(bob).lock(bob.address, firstLockAmount)
+
+    await advanceTimeAndBlock(EPOCH_DURATION)
+
+    const secondLockAmount = bn(200)
+    await mintFBeets(bob, secondLockAmount)
+    await fBeets.connect(bob).approve(locker.address, secondLockAmount)
+    await locker.connect(bob).lock(bob.address, secondLockAmount)
+
+    // now the pending locks should be the second lock
+    expect(await locker.pendingLockOf(bob.address)).to.equal(secondLockAmount)
+  });
+
   it("allows owner to add reward token with a distributor contract", async () => {
     /*
           we create an entry for each reward token which
