@@ -355,6 +355,29 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         return amount;
     }
 
+    /// @notice returns amount of newly locked tokens in the upcoming epoch
+    /// @param _user the user to check against
+    function pendingLockOf(address _user)
+        external
+        view
+        returns (uint256 amount)
+    {
+        LockedBalance[] storage locks = userLocks[_user];
+
+        uint256 locksLength = locks.length;
+
+        //return amount if latest lock is in the future
+        uint256 currentEpoch = _currentEpoch();
+        if (
+            locksLength > 0 &&
+            locks[locksLength - 1].unlockTime - lockDuration > currentEpoch
+        ) {
+            return locks[locksLength - 1].locked;
+        }
+
+        return 0;
+    }
+
     /// @notice Supply of all properly locked balances at most recent eligible epoch
     function totalSupply() external view returns (uint256 supply) {
         uint256 currentEpoch = _currentEpoch();
