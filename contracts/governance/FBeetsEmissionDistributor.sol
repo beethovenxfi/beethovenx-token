@@ -63,6 +63,13 @@ contract FBeetsEmissionDistributor is
         farmPid = id;
     }
 
+    function setLocker(FBeetsLocker fbeetsLocker)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        locker = fbeetsLocker;
+    }
+
     function depositToChef() external onlyRole(OPERATOR_ROLE) {
         _mint(address(this), 1);
         _approve(address(this), address(chef), 1);

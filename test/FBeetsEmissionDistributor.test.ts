@@ -86,6 +86,20 @@ describe("FBeetsEmissionDistributor", function () {
     await expect(distributor.connect(alice).setFarmId(2)).to.be.revertedWith("AccessControl")
   })
 
+  it("allows changing of locker contract by the operator", async () => {
+    const otherLocker = await deployContract<FBeetsLocker>("FBeetsLocker", [beetsBar.address, EPOCH_DURATION, LOCK_DURATION])
+    const distributor: FBeetsEmissionDistributor = await deployFBeetsEmissionDistributor(0)
+    await distributor.setLocker(otherLocker.address)
+    expect(await distributor.locker()).to.equal(otherLocker.address)
+  })
+
+  it("allows only operator to change locker contract", async () => {
+    const otherLocker = await deployContract<FBeetsLocker>("FBeetsLocker", [beetsBar.address, EPOCH_DURATION, LOCK_DURATION])
+    const distributor: FBeetsEmissionDistributor = await deployFBeetsEmissionDistributor(0)
+    await expect(distributor.connect(bob).setLocker(otherLocker.address)).to.be.revertedWith("AccessControl")
+    await expect(distributor.connect(alice).setLocker(otherLocker.address)).to.be.revertedWith("AccessControl")
+  })
+
   it("mints 1 edfBEETS and deposits into masterchef farm", async () => {
     // there should only ever exist a maximum of 1 token which is minted and then deposited into the specified masterchef farm
     const distributor: FBeetsEmissionDistributor = await deployFBeetsEmissionDistributor()
