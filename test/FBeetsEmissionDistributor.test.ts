@@ -168,7 +168,7 @@ describe("FBeetsEmissionDistributor", function () {
     // to go full circle, we advance the full reward duration which is 1 epoch
     await advanceTime(EPOCH_DURATION)
     // now lets claim the rewards
-    await locker.getReward(bob.address)
+    await locker.getReward()
     //  bob should have now all the rewards on the locker or half of the emissions (minus some rounding errors)
     expect(await beets.balanceOf(bob.address)).to.be.closeTo(userInfo.rewardDebt.div(2), 200000)
   })
