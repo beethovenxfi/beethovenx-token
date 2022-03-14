@@ -111,6 +111,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         uint256 _epochDuration,
         uint256 _lockDuration
     ) {
+        require(_lockDuration % _epochDuration == 0, "_epochDuration has to be a multiple of _lockDuration");
         lockingToken = _lockingToken;
         epochDuration = _epochDuration;
         lockDuration = _lockDuration;
@@ -123,15 +124,15 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         );
     }
 
-    function decimals() public pure returns (uint8) {
+    function decimals() external pure returns (uint8) {
         return _decimals;
     }
 
-    function name() public pure returns (string memory) {
+    function name() external pure returns (string memory) {
         return _name;
     }
 
-    function symbol() public pure returns (string memory) {
+    function symbol() external pure returns (string memory) {
         return _symbol;
     }
 
@@ -139,7 +140,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     /// @param _rewardToken The rewarded token by the `_distributor`
     /// @param _distributor Address of the reward token sender
     function addReward(address _rewardToken, address _distributor)
-        public
+        external
         onlyOwner
     {
         require(
@@ -154,6 +155,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         rewardData[_rewardToken].lastUpdateTime = block.timestamp;
         rewardData[_rewardToken].periodFinish = block.timestamp;
         rewardDistributors[_rewardToken][_distributor] = true;
+        emit RewardTokenAdded(_rewardToken);
+        emit RewardDistributorApprovalChanged(_rewardToken, _distributor, true);
     }
 
     /// @notice Modify approval for a distributor to call `notifyRewardAmount`
@@ -170,6 +173,11 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             "Reward token has not been added"
         );
         rewardDistributors[_rewardToken][_distributor] = _approved;
+        emit RewardDistributorApprovalChanged(
+            _rewardToken,
+            _distributor,
+            _approved
+        );
     }
 
     /// @notice Set kick incentive after epoch delay has passed
@@ -197,11 +205,12 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         view
         returns (uint256)
     {
+        Reward storage reward = rewardData[_rewardToken];
+
         if (totalLockedSupply == 0) {
-            return rewardData[_rewardToken].rewardPerTokenStored;
+            return reward.rewardPerTokenStored;
         }
 
-        Reward storage reward = rewardData[_rewardToken];
         uint256 secondsSinceLastApplicableRewardTime = _lastTimeRewardApplicable(
                 reward.periodFinish
             ) - reward.lastUpdateTime;
@@ -233,7 +242,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     }
 
     function lastTimeRewardApplicable(address _rewardsToken)
-        public
+        external
         view
         returns (uint256)
     {
@@ -746,21 +755,23 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     }
 
     /// @notice Claim all pending rewards
-    /// @param _user User address to claim rewards
-    function getReward(address _user) public nonReentrant updateReward(_user) {
+    function getReward() external nonReentrant updateReward(msg.sender) {
         for (uint256 i; i < rewardTokens.length; i++) {
             address _rewardsToken = rewardTokens[i];
-            uint256 reward = rewards[_user][_rewardsToken];
+            uint256 reward = rewards[msg.sender][_rewardsToken];
             if (reward > 0) {
-                rewards[_user][_rewardsToken] = 0;
-                IERC20(_rewardsToken).safeTransfer(_user, reward);
+                rewards[msg.sender][_rewardsToken] = 0;
+                IERC20(_rewardsToken).safeTransfer(msg.sender, reward);
 
-                emit RewardPaid(_user, _rewardsToken, reward);
+                emit RewardPaid(msg.sender, _rewardsToken, reward);
             }
         }
     }
 
-    function _notifyReward(address _rewardToken, uint256 _reward) internal {
+    function _notifyReward(address _rewardToken, uint256 _reward)
+        internal
+        returns (uint256 rewardRate, uint256 periodFinish)
+    {
         Reward storage tokenRewardData = rewardData[_rewardToken];
 
         // if there has not been a reward for the duration of an epoch, the reward rate resets
@@ -777,12 +788,7 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         tokenRewardData.lastUpdateTime = block.timestamp;
         tokenRewardData.periodFinish = block.timestamp + epochDuration;
 
-        emit RewardAdded(
-            _rewardToken,
-            _reward,
-            tokenRewardData.rewardRate,
-            tokenRewardData.periodFinish
-        );
+        return (tokenRewardData.rewardRate, tokenRewardData.periodFinish);
     }
 
     /// @notice Called by a reward distributor to distribute rewards
@@ -792,10 +798,16 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
         external
         updateReward(address(0))
     {
-        require(rewardDistributors[_rewardToken][msg.sender]);
-        require(_amount > 0, "No reward");
+        require(
+            rewardDistributors[_rewardToken][msg.sender],
+            "Rewarder not approved"
+        );
+        require(_amount > 0, "No rewards provided");
 
-        _notifyReward(_rewardToken, _amount);
+        (uint256 rewardRate, uint256 periodFinish) = _notifyReward(
+            _rewardToken,
+            _amount
+        );
 
         // handle the transfer of reward tokens via `transferFrom` to reduce the number
         // of transactions required and ensure correctness of the _reward amount
@@ -804,6 +816,8 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
             address(this),
             _amount
         );
+
+        emit RewardAdded(_rewardToken, _amount, rewardRate, periodFinish);
     }
 
     /// @notice Emergency function to withdraw non reward tokens
@@ -871,5 +885,11 @@ contract FBeetsLocker is ReentrancyGuard, Ownable {
     event SetKickIncentive(
         uint256 _kickRewardEpochDelay,
         uint256 _kickRewardPerEpoch
+    );
+    event RewardTokenAdded(address _rewardToken);
+    event RewardDistributorApprovalChanged(
+        address _rewardToken,
+        address _distributor,
+        bool _approved
     );
 }

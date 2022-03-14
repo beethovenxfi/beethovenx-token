@@ -74,6 +74,12 @@ describe("fBeets locking contract", function () {
     expect(actualFirstEpoch.startTime.toNumber()).to.eq(expectedFirstEpoch)
   })
 
+  it("does not allow setting an lock duration which is not a multiple of the epoch duration", async () => {
+    await expect(deployContract<FBeetsLocker>("FBeetsLocker", [fBeets.address, EPOCH_DURATION, EPOCH_DURATION * 1.5])).to.be.revertedWith(
+      "_epochDuration has to be a multiple of _lockDuration"
+    )
+  })
+
   it("allows only owner to set kick incentive", async () => {
     await expect(locker.connect(bob).setKickIncentive(50, 5)).to.be.revertedWith("Ownable: caller is not the owner")
 
@@ -689,11 +695,11 @@ describe("fBeets locking contract", function () {
     expect(lockedBalances.total).to.equal(firstLockAmount.add(secondLockAmount).add(thirdLockAmount).add(fourthLockedAmount))
     expect(lockedBalances.lockData).to.deep.equal([
       [thirdLockAmount, bn(secondLockUnlockTime + EPOCH_DURATION + LOCK_DURATION, 0)],
-      [fourthLockedAmount, bn(secondLockUnlockTime + EPOCH_DURATION * 2 +  LOCK_DURATION, 0)],
+      [fourthLockedAmount, bn(secondLockUnlockTime + EPOCH_DURATION * 2 + LOCK_DURATION, 0)],
     ])
   })
 
-  it('returns pending upcoming locks in the next epoch', async () => {
+  it("returns pending upcoming locks in the next epoch", async () => {
     // new locks get added to the next epoch, we want to be able to get the amount of those
     const firstEpoch = (await currentEpoch()) + EPOCH_DURATION
 
@@ -711,7 +717,7 @@ describe("fBeets locking contract", function () {
 
     // now the pending locks should be the second lock
     expect(await locker.pendingLockOf(bob.address)).to.equal(secondLockAmount)
-  });
+  })
 
   it("allows owner to add reward token with a distributor contract", async () => {
     /*
@@ -944,8 +950,8 @@ describe("fBeets locking contract", function () {
     await advanceTime(EPOCH_DURATION / 4)
     // we want to get rewards on same block for bob & alice to make calculations easier
     await setAutomineBlocks(false)
-    await locker.connect(bob).getReward(bob.address)
-    await locker.connect(alice).getReward(alice.address)
+    await locker.connect(bob).getReward()
+    await locker.connect(alice).getReward()
     await advanceBlock()
     await setAutomineBlocks(true)
     const getRewardBlockTime = await latest()
@@ -1013,7 +1019,7 @@ describe("fBeets locking contract", function () {
 
     await advanceTime(EPOCH_DURATION)
 
-    await expect(locker.getReward(bob.address))
+    await expect(locker.connect(bob).getReward())
       .to.emit(locker, "RewardPaid")
       .withArgs(bob.address, rewardToken.address, rewardAmount.div(EPOCH_DURATION).mul(EPOCH_DURATION))
   })
