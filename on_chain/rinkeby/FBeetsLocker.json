@@ -1,6 +1,6 @@
 {
   "contract": "FBeetsLocker",
-  "address": "0x7372FdD6e5349b187302dF04A6B34ea644a79cc0",
+  "address": "0x4E3dB1E512d1cf0d4e8700bd281df71fbFcf257B",
   "args": ["0x43Ab29673D0BA2A2321bd8c33438229a77E35172", "1200", "3600"],
   "verified": true
 }
