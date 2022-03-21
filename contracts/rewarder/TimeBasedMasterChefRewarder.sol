@@ -8,9 +8,9 @@ import "../interfaces/IRewarder.sol";
 import "../token/BeethovenxMasterChef.sol";
 
 contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
-    using SafeERC20 for IERC20;
+    using SafeERC20 for ERC20;
 
-    IERC20 public rewardToken;
+    ERC20 public rewardToken;
 
     struct UserInfo {
         uint256 amount;
@@ -34,7 +34,8 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     uint256 totalAllocPoint;
 
     uint256 public rewardPerSecond = 0;
-    uint256 private constant ACC_TOKEN_PRECISION = 1e12;
+
+    uint256 public accTokenPrecision;
 
     address public immutable masterChef;
 
@@ -53,6 +54,10 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         uint256 accRewardTokenPerShare
     );
     event LogRewardPerSecond(uint256 rewardPerSecond);
+    event LogSetRewardToken(
+        IERC20 indexed rewardToken,
+        uint256 accTokenPrecision
+    );
     event LogInit();
 
     constructor(address _masterChef) {
@@ -60,12 +65,20 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     }
 
     /// @notice To allow contract verification on matching similar source, we dont provide this in the constructor
-    function setRewardToken(IERC20 token) external onlyOwner {
+    function setRewardToken(ERC20 token) external onlyOwner {
         require(
             address(rewardToken) == address(0),
             "Reward token can only be set once"
         );
+        uint8 decimals = token.decimals();
+        require(decimals <= 18, "maximum 18 decimals supported");
+        /* 
+            since bpts have 18 decimals, and we want additional 12 decimals precision, we need to set the 
+            accTokenPrecision relative based on reward token decimals
+        */
+        accTokenPrecision = 10**uint256(18 - decimals + 12);
         rewardToken = token;
+        emit LogSetRewardToken(token, accTokenPrecision);
     }
 
     function onBeetsReward(
@@ -81,7 +94,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         if (userPoolInfo.amount > 0) {
             pending =
                 ((userPoolInfo.amount * pool.accRewardTokenPerShare) /
-                    ACC_TOKEN_PRECISION) -
+                    accTokenPrecision) -
                 userPoolInfo.rewardDebt;
             if (pending > rewardToken.balanceOf(address(this))) {
                 pending = rewardToken.balanceOf(address(this));
@@ -90,7 +103,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         userPoolInfo.amount = newLpAmount;
         userPoolInfo.rewardDebt =
             (newLpAmount * pool.accRewardTokenPerShare) /
-            ACC_TOKEN_PRECISION;
+            accTokenPrecision;
 
         if (pending > 0) {
             rewardToken.safeTransfer(recipient, pending);
@@ -197,10 +210,10 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
 
                 accRewardTokenPerShare =
                     accRewardTokenPerShare +
-                    ((rewards * ACC_TOKEN_PRECISION) / totalLpSupply);
+                    ((rewards * accTokenPrecision) / totalLpSupply);
             }
             pending =
-                ((user.amount * accRewardTokenPerShare) / ACC_TOKEN_PRECISION) -
+                ((user.amount * accRewardTokenPerShare) / accTokenPrecision) -
                 user.rewardDebt;
             if (pending > rewardToken.balanceOf(address(this))) {
                 pending = rewardToken.balanceOf(address(this));
@@ -234,7 +247,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
                     pool.allocPoint) / totalAllocPoint;
                 pool.accRewardTokenPerShare =
                     pool.accRewardTokenPerShare +
-                    ((tokenReward * ACC_TOKEN_PRECISION) / totalLpSupply);
+                    ((tokenReward * accTokenPrecision) / totalLpSupply);
             }
             pool.lastRewardTime = block.timestamp;
             poolInfo[pid] = pool;

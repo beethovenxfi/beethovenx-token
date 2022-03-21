@@ -33,6 +33,6 @@ export async function deployChef(
   return deployContract("BeethovenxMasterChef", [beetsAddress, treasuryAddress, beetsPerBlock, startBlock])
 }
 
-export async function deployERC20Mock(name: string, symbol: string, supply: number): Promise<ERC20Mock> {
-  return deployContract("ERC20Mock", ["LP Token 2", "LPT2", bn(supply)])
+export async function deployERC20Mock(name: string, symbol: string, supply: number, decimals: number = 18): Promise<ERC20Mock> {
+  return deployContract("ERC20Mock", [name, symbol, decimals, bn(supply)])
 }

@@ -47,8 +47,18 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewarder: TimeBasedMasterChefRewarder = await deployRewarder()
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
-    await rewarder.setRewardToken(rewardToken.address)
+    await expect(rewarder.setRewardToken(rewardToken.address)).to.emit(rewarder, "LogSetRewardToken").withArgs(rewardToken.address, bn(1, 12))
     expect(await rewarder.rewardToken()).to.equal(rewardToken.address)
+    expect(await rewarder.accTokenPrecision()).to.equal(bn(1, 12))
+  })
+
+  it("sets accTokenPrecision to 12 relative based on reward token decimals", async () => {
+    // so if a reward token has 18 decimals, it the precision should be 12, if the reward token has 6 decimals, it should be 18 - 6 + 12 = 24
+    const rewarder: TimeBasedMasterChefRewarder = await deployRewarder()
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000), 6)
+
+    await expect(rewarder.setRewardToken(rewardToken.address)).to.emit(rewarder, "LogSetRewardToken").withArgs(rewardToken.address, bn(1, 24))
+    expect(await rewarder.accTokenPrecision()).to.equal(bn(1, 24))
   })
 
   it("only allows setting of reward token once", async () => {
@@ -178,6 +188,41 @@ describe("TimeBasedMasterChefRewarder", function () {
     expect(await rewarder.pendingToken(0, bob.address)).to.equal(rewardsPerSecond.mul(100).div(4))
   })
 
+  it("returns correct amount of pending reward tokens for reward token with non standard decimals", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000), 6)
+
+    const rewardsPerSecond = bn(5, 6)
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
+
+    await rewardToken.transfer(rewarder.address, bn(10_000))
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(75))
+    await lpToken.transfer(bob.address, bn(25))
+
+    await setAutomineBlocks(false)
+    await lpToken.connect(bob).approve(chef.address, bn(25))
+    await chef.connect(bob).deposit(0, bn(25), bob.address)
+
+    await lpToken.connect(alice).approve(chef.address, bn(75))
+    await chef.connect(alice).deposit(0, bn(75), alice.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+    const before = await latest()
+
+    // we advance by 100 seconds
+    await advanceToTime(before.toNumber() + 100)
+    await advanceBlock()
+
+    expect(await rewarder.pendingToken(0, alice.address)).to.equal(rewardsPerSecond.mul(100).mul(3).div(4))
+    expect(await rewarder.pendingToken(0, bob.address)).to.equal(rewardsPerSecond.mul(100).div(4))
+  })
+
   it("transfers correct amount of reward tokens for single pool", async () => {
     const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
@@ -215,6 +260,62 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     expect(await rewardToken.balanceOf(alice.address)).to.equal(rewardsPerSecond.mul(100).mul(3).div(4))
     expect(await rewardToken.balanceOf(bob.address)).to.equal(rewardsPerSecond.mul(100).div(4))
+
+    expect(await rewarder.pendingToken(0, alice.address)).to.equal(bn(0))
+    expect(await rewarder.pendingToken(0, bob.address)).to.equal(bn(0))
+  })
+
+  it("transfers correct amount of reward tokens for single pool with non standard decials", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000), 6)
+
+    const rewardsPerSecond = bn(5, 6)
+    const rewarder = await deployRewarder()
+    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
+
+    await rewardToken.transfer(rewarder.address, bn(10_000))
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(75))
+    await lpToken.transfer(bob.address, bn(25))
+
+    await setAutomineBlocks(false)
+    await lpToken.connect(bob).approve(chef.address, bn(25))
+    await chef.connect(bob).deposit(0, bn(25), bob.address)
+
+    await lpToken.connect(alice).approve(chef.address, bn(75))
+    await chef.connect(alice).deposit(0, bn(75), alice.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+    const before = await latest()
+
+    // we advance by 100 seconds
+    await advanceToTime(before.toNumber() + 100)
+    await setAutomineBlocks(false)
+    await chef.connect(bob).harvest(0, bob.address)
+    await chef.connect(alice).harvest(0, alice.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+
+    expect(await rewardToken.balanceOf(alice.address)).to.equal(rewardsPerSecond.mul(100).mul(3).div(4))
+    expect(await rewardToken.balanceOf(bob.address)).to.equal(rewardsPerSecond.mul(100).div(4))
+
+    expect(await rewarder.pendingToken(0, alice.address)).to.equal(bn(0))
+    expect(await rewarder.pendingToken(0, bob.address)).to.equal(bn(0))
+
+    // we advance again by 100 seconds
+    const afterFirstHarvest = await latest()
+    await advanceToTime(afterFirstHarvest.toNumber() + 100)
+    await setAutomineBlocks(false)
+    await chef.connect(bob).harvest(0, bob.address)
+    await chef.connect(alice).harvest(0, alice.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+    expect(await rewardToken.balanceOf(alice.address)).to.equal(rewardsPerSecond.mul(100).mul(3).div(4).mul(2))
+    expect(await rewardToken.balanceOf(bob.address)).to.equal(rewardsPerSecond.mul(100).div(4).mul(2))
 
     expect(await rewarder.pendingToken(0, alice.address)).to.equal(bn(0))
     expect(await rewarder.pendingToken(0, bob.address)).to.equal(bn(0))
