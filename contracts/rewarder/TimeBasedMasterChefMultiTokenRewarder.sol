@@ -8,7 +8,7 @@ import "../interfaces/IRewarder.sol";
 import "../token/BeethovenxMasterChef.sol";
 
 contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
-    using SafeERC20 for IERC20;
+    using SafeERC20 for ERC20;
 
     struct UserInfo {
         uint256 amount;
@@ -21,35 +21,35 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
     }
 
     struct PendingReward {
-        IERC20 token;
+        ERC20 token;
         uint256 amount;
     }
 
-    IERC20[] public rewardTokens;
+    ERC20[] public rewardTokens;
     uint256[] public rewardsPerSecond;
 
     uint256[] public masterchefPoolIds;
 
     /// @notice Info of reward configuration for each pool and token .
-    mapping(uint256 => mapping(IERC20 => RewardInfo)) public tokenRewardInfos;
+    mapping(uint256 => mapping(ERC20 => RewardInfo)) public tokenRewardInfos;
 
     mapping(uint256 => uint256) public allocationPointsPerPool;
 
     /// @notice Info of each user that stakes LP tokens per reward token.
-    mapping(uint256 => mapping(address => mapping(IERC20 => UserInfo)))
+    mapping(uint256 => mapping(address => mapping(ERC20 => UserInfo)))
         public userInfos;
 
     /// @dev Total allocation points. Must be the sum of all allocation points in all pools.
     uint256 totalAllocationPoints;
 
-    uint256 private constant ACC_TOKEN_PRECISION = 1e12;
+    uint256 public accTokenPrecision;
 
     address public immutable masterChef;
 
     event LogOnReward(
         address indexed user,
         uint256 indexed pid,
-        IERC20 rewardToken,
+        ERC20 rewardToken,
         uint256 amount,
         address indexed to
     );
@@ -57,15 +57,13 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
     event LogSetPool(uint256 indexed pid, uint256 allocPoint);
     event LogUpdatePool(
         uint256 indexed pid,
-        IERC20 indexed rewardToken,
+        ERC20 indexed rewardToken,
         uint256 lastRewardTime,
         uint256 lpSupply,
         uint256 accRewardTokenPerShare
     );
-    event LogRewardsPerSecond(
-        IERC20[] rewardTokens,
-        uint256[] rewardsPerSecond
-    );
+    event LogRewardsPerSecond(ERC20[] rewardTokens, uint256[] rewardsPerSecond);
+    event LogSetRewardTokens(ERC20[] rewardTokens, uint256 accTokenPrecision);
     event LogInit();
 
     constructor(address _masterChef) {
@@ -73,9 +71,19 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
     }
 
     /// @notice To allow contract verification on matching similar source, we dont provide this in the constructor
-    function setRewardTokens(IERC20[] calldata tokens) external onlyOwner {
+    function setRewardTokens(ERC20[] calldata tokens) external onlyOwner {
         require(rewardTokens.length == 0, "Reward tokens can only be set once");
+        require(tokens.length > 0, "At least 1 reward token required");
+        uint8 decimals = tokens[0].decimals();
+        for (uint256 i = 1; i < tokens.length; i++) {
+            require(
+                tokens[i].decimals() == decimals,
+                "Mixed decimals in reward tokens not supported"
+            );
+        }
         rewardTokens = tokens;
+        accTokenPrecision = 10**uint256(18 - decimals + 12);
+        emit LogSetRewardTokens(tokens, accTokenPrecision);
     }
 
     function onBeetsReward(
@@ -88,7 +96,7 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
         // reward infos align with reward token index
         RewardInfo[] memory rewardInfos = updatePool(pid);
         for (uint256 i = 0; i < rewardInfos.length; i++) {
-            IERC20 rewardToken = rewardTokens[i];
+            ERC20 rewardToken = rewardTokens[i];
             UserInfo storage userInfo = userInfos[pid][userAddress][
                 rewardToken
             ];
@@ -96,7 +104,7 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
             if (userInfo.amount > 0) {
                 pending =
                     ((userInfo.amount * rewardInfos[i].accRewardTokenPerShare) /
-                        ACC_TOKEN_PRECISION) -
+                        accTokenPrecision) -
                     userInfo.rewardDebt;
                 if (pending > rewardToken.balanceOf(address(this))) {
                     pending = rewardToken.balanceOf(address(this));
@@ -105,7 +113,7 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
             userInfo.amount = newLpAmount;
             userInfo.rewardDebt =
                 (newLpAmount * rewardInfos[i].accRewardTokenPerShare) /
-                ACC_TOKEN_PRECISION;
+                accTokenPrecision;
 
             if (pending > 0) {
                 rewardToken.safeTransfer(recipient, pending);
@@ -123,15 +131,17 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
         external
         view
         override
-        returns (IERC20[] memory, uint256[] memory rewardAmounts)
+        returns (IERC20[] memory tokens, uint256[] memory rewardAmounts)
     {
         uint256 totalLpSupply = BeethovenxMasterChef(masterChef)
             .lpTokens(pid)
             .balanceOf(masterChef);
 
         rewardAmounts = new uint256[](rewardTokens.length);
+        tokens = new IERC20[](rewardTokens.length);
         for (uint256 i = 0; i < rewardTokens.length; i++) {
-            IERC20 rewardToken = rewardTokens[i];
+            ERC20 rewardToken = rewardTokens[i];
+            tokens[i] = rewardToken;
             RewardInfo memory rewardInfo = tokenRewardInfos[pid][rewardToken];
             rewardAmounts[i] = 0;
             if (rewardInfo.lastRewardTime != 0) {
@@ -154,18 +164,17 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
 
                     accRewardTokenPerShare =
                         accRewardTokenPerShare +
-                        ((rewards * ACC_TOKEN_PRECISION) / totalLpSupply);
+                        ((rewards * accTokenPrecision) / totalLpSupply);
                 }
                 rewardAmounts[i] =
                     ((user.amount * accRewardTokenPerShare) /
-                        ACC_TOKEN_PRECISION) -
+                        accTokenPrecision) -
                     user.rewardDebt;
                 if (rewardAmounts[i] > rewardToken.balanceOf(address(this))) {
                     rewardAmounts[i] = rewardToken.balanceOf(address(this));
                 }
             }
         }
-        return (rewardTokens, rewardAmounts);
     }
 
     /// @notice Sets the rewards per second to be distributed. Can only be called by the owner.
@@ -267,7 +276,7 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
             .balanceOf(masterChef);
 
         for (uint256 i = 0; i < rewardTokens.length; i++) {
-            IERC20 rewardToken = rewardTokens[i];
+            ERC20 rewardToken = rewardTokens[i];
             RewardInfo memory rewardInfo = tokenRewardInfos[pid][rewardToken];
             if (
                 rewardInfo.lastRewardTime != 0 &&
@@ -281,7 +290,7 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
 
                     rewardInfo.accRewardTokenPerShare =
                         rewardInfo.accRewardTokenPerShare +
-                        ((tokenReward * ACC_TOKEN_PRECISION) / totalLpSupply);
+                        ((tokenReward * accTokenPrecision) / totalLpSupply);
                 }
                 rewardInfo.lastRewardTime = block.timestamp;
                 tokenRewardInfos[pid][rewardToken] = rewardInfo;
