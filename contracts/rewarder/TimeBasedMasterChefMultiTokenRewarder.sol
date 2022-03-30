@@ -142,53 +142,67 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
         override
         returns (IERC20[] memory tokens, uint256[] memory rewardAmounts)
     {
-        uint256 totalLpSupply = BeethovenxMasterChef(masterChef)
-            .lpTokens(pid)
-            .balanceOf(masterChef);
-
         rewardAmounts = new uint256[](rewardTokenConfigs.length);
         tokens = new IERC20[](rewardTokenConfigs.length);
-        for (uint256 i = 0; i < rewardTokenConfigs.length; i++) {
-            RewardTokenConfig storage config = rewardTokenConfigs[i];
-            tokens[i] = config.rewardToken;
 
-            RewardInfo memory rewardInfo = tokenRewardInfos[pid][
-                config.rewardToken
-            ];
-            rewardAmounts[i] = 0;
-            if (rewardInfo.lastRewardTime != 0) {
-                UserInfo storage user = userInfos[pid][userAddress][
+        // if the pool is not configured, we return 0 amount for each reward token
+        if (
+            tokenRewardInfos[pid][rewardTokenConfigs[0].rewardToken]
+                .lastRewardTime == 0
+        ) {
+            for (uint256 i = 0; i < rewardTokenConfigs.length; i++) {
+                tokens[i] = rewardTokenConfigs[i].rewardToken;
+                rewardAmounts[i] = 0;
+            }
+        } else {
+            uint256 totalLpSupply = BeethovenxMasterChef(masterChef)
+                .lpTokens(pid)
+                .balanceOf(masterChef);
+
+            for (uint256 i = 0; i < rewardTokenConfigs.length; i++) {
+                RewardTokenConfig storage config = rewardTokenConfigs[i];
+                tokens[i] = config.rewardToken;
+
+                RewardInfo memory rewardInfo = tokenRewardInfos[pid][
                     config.rewardToken
                 ];
-                uint256 accRewardTokenPerShare = rewardInfo
-                    .accRewardTokenPerShare;
+                rewardAmounts[i] = 0;
+                if (rewardInfo.lastRewardTime != 0) {
+                    UserInfo storage user = userInfos[pid][userAddress][
+                        config.rewardToken
+                    ];
+                    uint256 accRewardTokenPerShare = rewardInfo
+                        .accRewardTokenPerShare;
 
-                if (
-                    block.timestamp > rewardInfo.lastRewardTime &&
-                    totalLpSupply != 0
-                ) {
-                    uint256 timeSinceLastReward = block.timestamp -
-                        rewardInfo.lastRewardTime;
+                    if (
+                        block.timestamp > rewardInfo.lastRewardTime &&
+                        totalLpSupply != 0
+                    ) {
+                        uint256 timeSinceLastReward = block.timestamp -
+                            rewardInfo.lastRewardTime;
 
-                    uint256 rewards = (timeSinceLastReward *
-                        config.rewardsPerSecond *
-                        allocationPointsPerPool[pid]) / totalAllocationPoints;
+                        uint256 rewards = (timeSinceLastReward *
+                            config.rewardsPerSecond *
+                            allocationPointsPerPool[pid]) /
+                            totalAllocationPoints;
 
-                    accRewardTokenPerShare =
-                        accRewardTokenPerShare +
-                        ((rewards * config.accTokenPrecision) / totalLpSupply);
-                }
-                rewardAmounts[i] =
-                    ((user.amount * accRewardTokenPerShare) /
-                        config.accTokenPrecision) -
-                    user.rewardDebt;
-                if (
-                    rewardAmounts[i] >
-                    config.rewardToken.balanceOf(address(this))
-                ) {
-                    rewardAmounts[i] = config.rewardToken.balanceOf(
-                        address(this)
-                    );
+                        accRewardTokenPerShare =
+                            accRewardTokenPerShare +
+                            ((rewards * config.accTokenPrecision) /
+                                totalLpSupply);
+                    }
+                    rewardAmounts[i] =
+                        ((user.amount * accRewardTokenPerShare) /
+                            config.accTokenPrecision) -
+                        user.rewardDebt;
+                    if (
+                        rewardAmounts[i] >
+                        config.rewardToken.balanceOf(address(this))
+                    ) {
+                        rewardAmounts[i] = config.rewardToken.balanceOf(
+                            address(this)
+                        );
+                    }
                 }
             }
         }
@@ -295,6 +309,7 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
             RewardInfo memory rewardInfo = tokenRewardInfos[pid][
                 config.rewardToken
             ];
+            rewardInfos[i] = rewardInfo;
             if (
                 rewardInfo.lastRewardTime != 0 &&
                 block.timestamp > rewardInfo.lastRewardTime
