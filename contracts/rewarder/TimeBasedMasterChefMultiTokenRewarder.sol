@@ -361,4 +361,12 @@ contract TimeBasedMasterChefMultiTokenRewarder is IRewarder, Ownable {
             tokens[i] = rewardTokenConfigs[i].rewardToken;
         }
     }
+
+    function getRewardTokenConfigs()
+        public
+        view
+        returns (RewardTokenConfig[] memory configs)
+    {
+        return rewardTokenConfigs;
+    }
 }
