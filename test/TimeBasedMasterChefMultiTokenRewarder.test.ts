@@ -304,6 +304,42 @@ describe("TimeBasedMasterChefMultiTokenRewarder", function () {
     expect(bobPendingTokens.rewardAmounts[1]).to.equal(0)
   })
 
+  it("emits LogOnReward for each reward token when harvesting", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+    const anotherRewardToken = await deployERC20Mock("Token 2", "T2", bn(10_000, 6), 6)
+
+    const rewardsPerSecond = bn(5)
+    const otherRewardsPerSecond = bn(4, 6)
+    const rewarder = await deployRewarder()
+    const rewardTokens = [rewardToken.address, anotherRewardToken.address]
+    await rewarder.initializeRewardTokens(rewardTokens)
+    await rewarder.setRewardPerSecond(rewardTokens, [rewardsPerSecond, otherRewardsPerSecond])
+
+    await rewardToken.transfer(rewarder.address, bn(10_000))
+    await anotherRewardToken.transfer(rewarder.address, bn(10_000))
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(100))
+
+    await setAutomineBlocks(false)
+    await lpToken.connect(alice).approve(chef.address, bn(100))
+    await chef.connect(alice).deposit(0, bn(100), alice.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+    const before = await latest()
+
+    // we advance by 100 seconds
+    await advanceToTime(before.toNumber() + 100)
+    await expect(chef.connect(alice).harvest(0, alice.address))
+      .to.emit(rewarder, "LogOnReward")
+      .withArgs(alice.address, 0, rewardToken.address, rewardsPerSecond.mul(100), alice.address)
+      .to.emit(rewarder, "LogOnReward")
+      .withArgs(alice.address, 0, anotherRewardToken.address, otherRewardsPerSecond.mul(100), alice.address)
+  })
+
   it("transfers correct amount of reward tokens for multiple pools", async () => {
     const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
     const lpToken2 = await deployERC20Mock("LPToken2", "LPT2", bn(10_000))

@@ -269,6 +269,36 @@ describe("TimeBasedMasterChefRewarder", function () {
     expect(await rewarder.pendingToken(0, bob.address)).to.equal(bn(0))
   })
 
+  it("emits LogOnReward when rewards harvested", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder = await deployRewarder()
+    await rewarder.initializeRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
+
+    await rewardToken.transfer(rewarder.address, bn(10_000))
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(100))
+
+    await setAutomineBlocks(false)
+    await lpToken.connect(alice).approve(chef.address, bn(100))
+    await chef.connect(alice).deposit(0, bn(100), alice.address)
+    await setAutomineBlocks(true)
+    await advanceBlock()
+    const before = await latest()
+
+    // we advance by 100 seconds
+    await advanceToTime(before.toNumber() + 100)
+    await expect(chef.connect(alice).harvest(0, alice.address))
+      .to.emit(rewarder, "LogOnReward")
+      .withArgs(alice.address, 0, rewardsPerSecond.mul(100), alice.address)
+  })
+
   it("transfers correct amount of reward tokens for single pool with non standard decials", async () => {
     const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000), 6)
