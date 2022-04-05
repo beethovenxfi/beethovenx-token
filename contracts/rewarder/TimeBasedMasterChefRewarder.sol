@@ -65,7 +65,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     }
 
     /// @notice To allow contract verification on matching similar source, we dont provide this in the constructor
-    function setRewardToken(ERC20 token) external onlyOwner {
+    function initializeRewardToken(ERC20 token) external onlyOwner {
         require(
             address(rewardToken) == address(0),
             "Reward token can only be set once"

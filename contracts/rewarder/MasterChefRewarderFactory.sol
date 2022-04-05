@@ -95,7 +95,7 @@ contract MasterChefRewarderFactory is AccessControl {
             address(masterChef)
         );
         // we dont provide the reward token in the constructor for contract verification reasons
-        rewarder.setRewardToken(ERC20(rewardToken));
+        rewarder.initializeRewardToken(ERC20(rewardToken));
         deployedRewarders.push(rewarder);
         _deploymentIdsByAdmin[rewarderAdmin].push(deployedRewarders.length - 1);
 

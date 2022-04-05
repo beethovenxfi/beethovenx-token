@@ -47,7 +47,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewarder: TimeBasedMasterChefRewarder = await deployRewarder()
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
-    await expect(rewarder.setRewardToken(rewardToken.address)).to.emit(rewarder, "LogSetRewardToken").withArgs(rewardToken.address, bn(1, 12))
+    await expect(rewarder.initializeRewardToken(rewardToken.address))
+      .to.emit(rewarder, "LogSetRewardToken")
+      .withArgs(rewardToken.address, bn(1, 12))
     expect(await rewarder.rewardToken()).to.equal(rewardToken.address)
     expect(await rewarder.accTokenPrecision()).to.equal(bn(1, 12))
   })
@@ -57,7 +59,9 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewarder: TimeBasedMasterChefRewarder = await deployRewarder()
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000), 6)
 
-    await expect(rewarder.setRewardToken(rewardToken.address)).to.emit(rewarder, "LogSetRewardToken").withArgs(rewardToken.address, bn(1, 24))
+    await expect(rewarder.initializeRewardToken(rewardToken.address))
+      .to.emit(rewarder, "LogSetRewardToken")
+      .withArgs(rewardToken.address, bn(1, 24))
     expect(await rewarder.accTokenPrecision()).to.equal(bn(1, 24))
   })
 
@@ -66,8 +70,8 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
     const anotherRewardToken = await deployERC20Mock("Token 2", "T2", bn(10_000))
 
-    await rewarder.setRewardToken(rewardToken.address)
-    await expect(rewarder.setRewardToken(anotherRewardToken.address)).to.be.revertedWith("Reward token can only be set once")
+    await rewarder.initializeRewardToken(rewardToken.address)
+    await expect(rewarder.initializeRewardToken(anotherRewardToken.address)).to.be.revertedWith("Reward token can only be set once")
   })
 
   it("sets rewards per second", async () => {
@@ -144,7 +148,7 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardToken = await deployERC20Mock("Token 1", "T1", 10_000)
 
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
 
     const topUpAmount = bn(100)
     await rewardToken.approve(rewarder.address, topUpAmount)
@@ -159,7 +163,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
@@ -194,7 +198,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5, 6)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
@@ -229,7 +233,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
@@ -271,7 +275,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5, 6)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
@@ -328,7 +332,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     const rewardAmount = bn(10_000)
@@ -386,7 +390,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(98))
@@ -415,7 +419,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(98))
@@ -440,7 +444,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await chef.add(10, lpToken.address, rewarder.address)
@@ -458,7 +462,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await chef.add(10, lpToken.address, rewarder.address)
@@ -478,7 +482,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await chef.add(10, lpToken.address, rewarder.address)
@@ -498,7 +502,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await chef.add(10, lpToken.address, rewarder.address)
@@ -518,7 +522,7 @@ describe("TimeBasedMasterChefRewarder", function () {
     const rewardsPerSecond = bn(5)
 
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
@@ -533,7 +537,7 @@ describe("TimeBasedMasterChefRewarder", function () {
 
     const rewardsPerSecond = bn(5)
     const rewarder = await deployRewarder()
-    await rewarder.setRewardToken(rewardToken.address)
+    await rewarder.initializeRewardToken(rewardToken.address)
     await rewarder.setRewardPerSecond(rewardsPerSecond)
 
     await rewardToken.transfer(rewarder.address, bn(10_000))
