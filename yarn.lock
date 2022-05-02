@@ -1030,9 +1030,9 @@
     "@types/bn.js" "*"
     "@types/underscore" "*"
 
-"@uniswap/v2-core@git://github.com/uniswap/uniswap-v2-core.git#27f6354bae6685612c182c3bc7577e61bc8717e3":
+"@uniswap/v2-core@github:uniswap/uniswap-v2-core.git#27f6354bae6685612c182c3bc7577e61bc8717e3":
   version "1.0.0-beta.0"
-  resolved "git://github.com/uniswap/uniswap-v2-core.git#27f6354bae6685612c182c3bc7577e61bc8717e3"
+  resolved "https://codeload.github.com/uniswap/uniswap-v2-core/tar.gz/27f6354bae6685612c182c3bc7577e61bc8717e3"
 
 "@yarnpkg/lockfile@^1.1.0":
   version "1.1.0"
