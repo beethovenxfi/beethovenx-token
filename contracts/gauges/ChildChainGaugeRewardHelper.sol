@@ -5,8 +5,6 @@ pragma solidity 0.8.7;
 import "./IRewardsOnlyGauge.sol";
 import "./IChildChainStreamer.sol";
 
-//import "hardhat/console.sol";
-
 contract ChildChainGaugeRewardHelper {
     bytes32 public constant CLAIM_SIG = keccak256("get_reward()") >> (28 * 8);
     uint256 public constant CLAIM_FREQUENCY = 3600;
