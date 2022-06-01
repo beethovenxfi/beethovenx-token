@@ -2,6 +2,7 @@ import "dotenv/config"
 import "@nomiclabs/hardhat-ethers"
 import "@nomiclabs/hardhat-etherscan"
 import "@nomiclabs/hardhat-solhint"
+import "@nomiclabs/hardhat-vyper"
 import "@nomiclabs/hardhat-waffle"
 import "@tenderly/hardhat-tenderly"
 import "hardhat-abi-exporter"
@@ -60,6 +61,11 @@ const config: HardhatUserConfig = {
       live: true,
       saveDeployments: true,
       gasMultiplier: 30,
+    },
+    optimism: {
+      url: "https://mainnet.optimism.io",
+      accounts: accounts,
+      chainId: 10,
     },
     // "fantom-testnet": {
     //   url: "https://rpc.testnet.fantom.network",
