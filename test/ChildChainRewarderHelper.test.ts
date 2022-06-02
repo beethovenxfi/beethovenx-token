@@ -105,7 +105,7 @@ describe("ChildChainRewarderHelper", function () {
     await advanceBlock()
     await advanceTimeAndBlock(60)
 
-    const pendingAlice = await rewardHelper.connect(alice).callStatic.pendingRewards(gauge.address, rewardToken.address)
+    const pendingAlice = await rewardHelper.callStatic.pendingRewards(gauge.address, alice.address, rewardToken.address)
     expect(pendingAlice).to.be.closeTo(rate.mul(60).div(2), 1e5)
   })
 
@@ -117,7 +117,6 @@ describe("ChildChainRewarderHelper", function () {
     const rewardAmount = bn(50_000)
     await rewardToken.transfer(streamer.address, rewardAmount)
     await streamer.notify_reward_amount(rewardToken.address)
-    const rewardTokenData = await streamer.reward_data(rewardToken.address)
 
     await setAutomineBlocks(false)
     await pool.connect(alice).approve(gauge.address, bn(100))
@@ -129,7 +128,7 @@ describe("ChildChainRewarderHelper", function () {
     await advanceTimeAndBlock(claimFrequency + 1)
 
     const pendingGauge = await gauge.connect(alice).callStatic.claimable_reward_write(alice.address, rewardToken.address)
-    const pendingHelper = await rewardHelper.connect(alice).callStatic.pendingRewards(gauge.address, rewardToken.address)
+    const pendingHelper = await rewardHelper.callStatic.pendingRewards(gauge.address, alice.address, rewardToken.address)
     expect(pendingHelper).to.equal(pendingGauge)
   })
 
@@ -153,7 +152,7 @@ describe("ChildChainRewarderHelper", function () {
     await advanceBlock()
     await advanceTimeAndBlock(60)
 
-    await rewardHelper.connect(alice).claimRewards(gauge.address)
+    await rewardHelper.claimRewards(gauge.address, alice.address)
     const aliceAmount = await rewardToken.balanceOf(alice.address)
     expect(aliceAmount).to.be.closeTo(rate.mul(60).div(2), 1)
   })
