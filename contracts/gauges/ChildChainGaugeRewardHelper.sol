@@ -29,24 +29,7 @@ contract ChildChainGaugeRewardHelper {
         IChildChainStreamer streamer = IChildChainStreamer(
             gauge.reward_contract()
         );
-        uint256 lastUpdateTime = streamer.last_update_time();
-        if (lastUpdateTime + CLAIM_FREQUENCY < block.timestamp) {
-            return gauge.claimable_reward_write(user, token);
-        } else {
-            uint256 pendingOnGauge = gauge.claimable_reward(user, token);
-            IChildChainStreamer.RewardToken memory rewardToken = streamer
-                .reward_data(token);
-
-            uint256 totalPendingOnStreamer = (block.timestamp -
-                lastUpdateTime) * rewardToken.rate;
-
-            uint256 rewardPerShare = (1e18 * totalPendingOnStreamer) /
-                gauge.totalSupply();
-
-            return
-                pendingOnGauge +
-                (gauge.balanceOf(user) * rewardPerShare) /
-                1e18;
-        }
+        streamer.get_reward();
+        return gauge.claimable_reward_write(user, token);
     }
 }
