@@ -62,6 +62,11 @@ const config: HardhatUserConfig = {
       saveDeployments: true,
       gasMultiplier: 30,
     },
+    goerli: {
+      url: `https://eth-goerli.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      chainId: 5,
+      accounts,
+    },
     optimism: {
       url: "https://mainnet.optimism.io",
       accounts: accounts,
