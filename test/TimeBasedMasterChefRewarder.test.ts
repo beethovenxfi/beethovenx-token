@@ -546,6 +546,37 @@ describe("TimeBasedMasterChefRewarder", function () {
     await expect(rewarder.onBeetsReward(0, bob.address, bob.address, 10, bn(100))).to.be.revertedWith("Only MasterChef can call this function.")
   })
 
+  it("updates user balance correctly on emergency withdraw", async () => {
+    const lpToken = await deployERC20Mock("LPToken", "LPT", bn(10_000))
+    const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
+
+    const rewardsPerSecond = bn(5)
+    const rewarder = await deployRewarder()
+    await rewarder.initializeRewardToken(rewardToken.address)
+    await rewarder.setRewardPerSecond(rewardsPerSecond)
+
+    await chef.add(10, lpToken.address, rewarder.address)
+    await rewarder.add(0, 100)
+
+    await lpToken.transfer(alice.address, bn(100))
+
+    await lpToken.connect(alice).approve(chef.address, bn(200))
+    await chef.connect(alice).deposit(0, bn(100), alice.address)
+    await advanceBlock()
+
+    const rewarderUserInfoBeforeEmergencyWithdraw = await rewarder.userInfo(0, alice.address)
+    expect(rewarderUserInfoBeforeEmergencyWithdraw.amount).to.equal(bn(100))
+
+    await chef.connect(alice).emergencyWithdraw(0, alice.address)
+
+    const rewarderUserInfoAfterEmergencyWithdraw = await rewarder.userInfo(0, alice.address)
+    expect(rewarderUserInfoAfterEmergencyWithdraw.amount).to.equal(0)
+    await chef.connect(alice).deposit(0, bn(100), alice.address)
+
+    const rewarderUserInfoAfterDeposit = await rewarder.userInfo(0, alice.address)
+    expect(rewarderUserInfoAfterDeposit.amount).to.equal(bn(100))
+  })
+
   it("allows owner to shut down rewarder and withdraw remaining funds", async () => {
     const rewardToken = await deployERC20Mock("Token 1", "T1", bn(10_000))
 
