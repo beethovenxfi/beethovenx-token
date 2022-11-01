@@ -52,12 +52,6 @@ describe("ReliquaryBeetsStreamer", function () {
     streamer = await deployContract("ReliquaryBeetsStreamer", [chef.address, poolId, reliquary.address])
 
     await chef.add(10, streamer.address, ethers.constants.AddressZero)
-
-    const lpToken = await chef.lpTokens(0)
-    expect(lpToken).to.be.equal(streamer.address)
-
-    const poolLength = await chef.poolLength()
-    expect(poolLength).to.be.equal(1)
   })
 
   it("deposit the streamer bpt into the farm", async () => {
