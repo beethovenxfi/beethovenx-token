@@ -13,8 +13,6 @@ contract ReliquaryBeetsStreamer is
     ERC20("ReliquaryStreamerBPT", "rqBPT"),
     Ownable
 {
-    using SafeERC20 for IERC20;
-
     uint256 public constant MAX_SUPPLY = 10; // 10 tokens only
 
     BeethovenxMasterChef public masterchef;
