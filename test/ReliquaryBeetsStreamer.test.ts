@@ -72,7 +72,7 @@ describe("ReliquaryBeetsStreamer", function () {
     await streamer.harvestToReliquary()
 
     expect(await beets.balanceOf(streamer.address)).to.be.equal(0)
-    expect(await beets.balanceOf(reliquary.address)).to.be.gt(0)
+    expect(await beets.balanceOf(reliquary.address)).to.be.equal(bn(6).mul(101).mul(lpPercentage).div(1000))
   })
 
   it("only owner can call streamer", async () => {
