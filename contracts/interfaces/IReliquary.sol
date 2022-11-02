@@ -6,16 +6,18 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 import "./IEmissionCurve.sol";
 import "./INFTDescriptor.sol";
-import "./IRewarder.sol";
+import "./IReliquaryRewarder.sol";
 
 /*
  + @notice Info for each Reliquary position.
  + `amount` LP token amount the position owner has provided
- + `rewardDebt` OATH accumalated before the position's entry or last harvest
- + `rewardCredit` OATH owed to the user on next harvest
+ + `rewardDebt` Amount of reward token accumalated before the position's entry or last harvest
+ + `rewardCredit` Amount of reward token owed to the user on next harvest
  + `entry` Used to determine the maturity of the position
  + `poolId` ID of the pool to which this position belongs
  + `level` Index of this position's level within the pool's array of levels
+ + `genesis` Relic creation time
+ + `lastMaturityBonus` Last time the position had its entry altered by a MaturityModifier
 */
 struct PositionInfo {
     uint256 amount;
@@ -24,17 +26,19 @@ struct PositionInfo {
     uint256 entry; // position owner's relative entry into the pool.
     uint256 poolId; // ensures that a single Relic is only used for one pool.
     uint256 level;
+    uint256 genesis;
+    uint256 lastMaturityBonus;
 }
 
 /*
  + @notice Info of each Reliquary pool
- + `accOathPerShare` Accumulated OATH per share of pool (1 / 1e12)
- + `lastRewardTime` Last timestamp the accumulated OATH was updated
+ + `accRewardPerShare` Accumulated reward tokens per share of pool (1 / 1e12)
+ + `lastRewardTime` Last timestamp the accumulated reward was updated
  + `allocPoint` Pool's individual allocation - ratio of the total allocation
  + `name` Name of pool to be displayed in NFT image
 */
 struct PoolInfo {
-    uint256 accOathPerShare;
+    uint256 accRewardPerShare;
     uint256 lastRewardTime;
     uint256 allocPoint;
     string name;
@@ -50,6 +54,18 @@ struct LevelInfo {
     uint256[] requiredMaturity;
     uint256[] allocPoint;
     uint256[] balance;
+}
+
+/*
+ + @notice Object representing pending rewards and related data for a position.
+ + `relicId` The NFT ID of the given position.
+ + `poolId` ID of the pool to which this position belongs.
+ + `pendingReward` pending reward amount for a given position.
+*/
+struct PendingReward {
+    uint256 relicId;
+    uint256 poolId;
+    uint256 pendingReward;
 }
 
 interface IReliquary is IERC721Enumerable {
@@ -78,10 +94,34 @@ interface IReliquary is IERC721Enumerable {
         bool overwriteRewarder
     ) external;
 
-    function pendingOath(uint256 relicId)
+    function modifyMaturity(uint256 relicId, uint256 points)
+        external
+        returns (uint256 receivedBonus);
+
+    function updateLastMaturityBonus(uint256 relicId) external;
+
+    function pendingReward(uint256 relicId)
         external
         view
         returns (uint256 pending);
+
+    function pendingRewardsOfOwner(address owner)
+        external
+        view
+        returns (PendingReward[] memory pendingRewards);
+
+    function relicPositionsOfOwner(address owner)
+        external
+        view
+        returns (
+            uint256[] memory relicIds,
+            PositionInfo[] memory positionInfos
+        );
+
+    function levelOnUpdate(uint256 relicId)
+        external
+        view
+        returns (uint256 level);
 
     function massUpdatePools(uint256[] calldata pids) external;
 
@@ -97,9 +137,13 @@ interface IReliquary is IERC721Enumerable {
 
     function withdraw(uint256 amount, uint256 relicId) external;
 
-    function harvest(uint256 relicId) external;
+    function harvest(uint256 relicId, address harvestTo) external;
 
-    function withdrawAndHarvest(uint256 amount, uint256 relicId) external;
+    function withdrawAndHarvest(
+        uint256 amount,
+        uint256 relicId,
+        address harvestTo
+    ) external;
 
     function emergencyWithdraw(uint256 relicId) external;
 
@@ -121,7 +165,7 @@ interface IReliquary is IERC721Enumerable {
 
     // State
 
-    function oath() external view returns (IERC20);
+    function rewardToken() external view returns (IERC20);
 
     function nftDescriptor(uint256) external view returns (INFTDescriptor);
 
@@ -143,4 +187,6 @@ interface IReliquary is IERC721Enumerable {
     function totalAllocPoint() external view returns (uint256);
 
     function poolLength() external view returns (uint256);
+
+    function isApprovedOrOwner(address, uint256) external view returns (bool);
 }

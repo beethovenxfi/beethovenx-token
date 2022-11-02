@@ -4,6 +4,7 @@ import { ethers } from "hardhat"
 import { BeethovenxMasterChef, BeethovenxToken, RewarderMock } from "../types"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 import { BigNumber } from "ethers"
+import { getContractAt } from "@nomiclabs/hardhat-ethers/internal/helpers"
 
 describe("BeethovenxMasterChef", function () {
   let beets: BeethovenxToken
@@ -31,6 +32,13 @@ describe("BeethovenxMasterChef", function () {
 
   beforeEach(async function () {
     beets = await deployContract("BeethovenxToken", [])
+  })
+
+  it("test forking", async () => {
+    const masterchef = (await ethers.getContractAt("BeethovenxMasterChef", "0x8166994d9ebBe5829EC86Bd81258149B87faCfd3")) as BeethovenxMasterChef
+
+    const poolLength = await masterchef.poolLength()
+    console.log("pools", poolLength.toNumber())
   })
 
   it("sets initial state correctly", async () => {
@@ -315,7 +323,7 @@ describe("BeethovenxMasterChef", function () {
     await advanceBlockTo(309)
 
     // Alice deposits 10 LPs at block 310
-    await chef.connect(alice).deposit(0, "10", alice.address)
+    const tx = await chef.connect(alice).deposit(0, "10", alice.address)
 
     await advanceBlockTo(312)
     await chef.connect(alice).harvest(0, alice.address) // block 313

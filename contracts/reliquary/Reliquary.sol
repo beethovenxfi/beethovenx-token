@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
-import "./interfaces/IReliquary.sol";
-import "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import "openzeppelin-contracts/contracts/token/ERC721/extensions/ERC721Burnable.sol";
-import "openzeppelin-contracts/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import "openzeppelin-contracts/contracts/utils/Multicall.sol";
-import "openzeppelin-contracts/contracts/access/AccessControlEnumerable.sol";
-import "openzeppelin-contracts/contracts/security/ReentrancyGuard.sol";
+import "../interfaces/IReliquary.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/utils/Multicall.sol";
+import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /*
  + @title Reliquary
@@ -35,6 +36,7 @@ contract Reliquary is
     /// @notice Access control roles.
     bytes32 private constant OPERATOR = keccak256("OPERATOR");
     bytes32 private constant EMISSION_CURVE = keccak256("EMISSION_CURVE");
+    bytes32 private constant MATURITY_MODIFIER = keccak256("MATURITY_MODIFIER");
 
     /// @notice Indicates whether tokens are being added to, or removed from, a pool
     enum Kind {
@@ -43,14 +45,14 @@ contract Reliquary is
         OTHER
     }
 
-    /// @notice Level of precision rewards are calculated to
-    uint private constant ACC_OATH_PRECISION = 1e12;
+    /// @notice Level of precision ards are calculated to
+    uint256 private constant ACC_REWARD_PRECISION = 1e12;
 
     /// @notice Nonce to use for new relicId
-    uint private nonce;
+    uint256 private nonce;
 
-    /// @notice Address of OATH contract.
-    IERC20 public immutable oath;
+    /// @notice Address of the reward token contract.
+    IERC20 public immutable rewardToken;
     /// @notice Address of each NFTDescriptor contract.
     INFTDescriptor[] public nftDescriptor;
     /// @notice Address of EmissionCurve contract.
@@ -65,64 +67,136 @@ contract Reliquary is
     IRewarder[] public rewarder;
 
     /// @notice Info of each staked position
-    mapping(uint => PositionInfo) private positionForId;
+    mapping(uint256 => PositionInfo) private positionForId;
 
     /// @dev Total allocation points. Must be the sum of all allocation points in all pools.
-    uint public totalAllocPoint;
+    uint256 public totalAllocPoint;
 
-    event Deposit(
-        uint indexed pid,
-        uint amount,
+    event CreateRelic(
+        uint256 indexed pid,
         address indexed to,
-        uint indexed relicId
+        uint256 indexed relicId
+    );
+    event Deposit(
+        uint256 indexed pid,
+        uint256 amount,
+        address indexed to,
+        uint256 indexed relicId
     );
     event Withdraw(
-        uint indexed pid,
-        uint amount,
+        uint256 indexed pid,
+        uint256 amount,
         address indexed to,
-        uint indexed relicId
+        uint256 indexed relicId
     );
     event EmergencyWithdraw(
-        uint indexed pid,
-        uint amount,
+        uint256 indexed pid,
+        uint256 amount,
         address indexed to,
-        uint indexed relicId
+        uint256 indexed relicId
     );
-    event Harvest(uint indexed pid, uint amount, uint indexed relicId);
+    event Harvest(
+        uint256 indexed pid,
+        uint256 amount,
+        address indexed to,
+        uint256 indexed relicId
+    );
+    event MaturityBonus(
+        uint256 indexed pid,
+        address indexed to,
+        uint256 indexed relicId,
+        uint256 bonus
+    );
     event LogPoolAddition(
-        uint indexed pid,
-        uint allocPoint,
+        uint256 indexed pid,
+        uint256 allocPoint,
         IERC20 indexed poolToken,
         IRewarder indexed rewarder,
         INFTDescriptor nftDescriptor
     );
     event LogPoolModified(
-        uint indexed pid,
-        uint allocPoint,
+        uint256 indexed pid,
+        uint256 allocPoint,
         IRewarder indexed rewarder,
         INFTDescriptor nftDescriptor
     );
     event LogUpdatePool(
-        uint indexed pid,
-        uint lastRewardTime,
-        uint lpSupply,
-        uint accOathPerShare
+        uint256 indexed pid,
+        uint256 lastRewardTime,
+        uint256 lpSupply,
+        uint256 accRewardPerShare
     );
     event LogSetEmissionCurve(IEmissionCurve indexed emissionCurveAddress);
-    event LevelChanged(uint indexed relicId, uint newLevel);
-    event Split(uint indexed fromId, uint indexed toId, uint amount);
-    event Shift(uint indexed fromId, uint indexed toId, uint amount);
-    event Merge(uint indexed fromId, uint indexed toId, uint amount);
+    event LevelChanged(uint256 indexed relicId, uint256 newLevel);
+    event Split(uint256 indexed fromId, uint256 indexed toId, uint256 amount);
+    event Shift(uint256 indexed fromId, uint256 indexed toId, uint256 amount);
+    event Merge(uint256 indexed fromId, uint256 indexed toId, uint256 amount);
+
+    /*
+     + @notice structs defined in IReliquary
+
+     + @notice Info for each Reliquary position.
+     + `amount` LP token amount the position owner has provided
+     + `rewardDebt` Amount of reward token accumalated before the position's entry or last harvest
+     + `rewardCredit` Amount of reward token owed to the user on next harvest
+     + `entry` Used to determine the maturity of the position
+     + `poolId` ID of the pool to which this position belongs
+     + `level` Index of this position's level within the pool's array of levels
+     + `genesis` Relic creation time
+     + `lastMaturityBonus` Last time the position had its entry altered by a MaturityModifier
+    struct PositionInfo {
+        uint amount;
+        uint rewardDebt;
+        uint rewardCredit;
+        uint entry; // position owner's relative entry into the pool.
+        uint poolId; // ensures that a single Relic is only used for one pool.
+        uint level;
+        uint genesis;
+        uint lastMaturityBonus;
+    }
+
+     + @notice Info of each Reliquary pool
+     + `accRewardPerShare` Accumulated reward tokens per share of pool (1 / 1e12)
+     + `lastRewardTime` Last timestamp the accumulated reward was updated
+     + `allocPoint` Pool's individual allocation - ratio of the total allocation
+     + `name` Name of pool to be displayed in NFT image
+    struct PoolInfo {
+        uint accRewardPerShare;
+        uint lastRewardTime;
+        uint allocPoint;
+        string name;
+    }
+
+     + @notice Level that determines how maturity is rewarded
+     + `requiredMaturity` The minimum maturity (in seconds) required to reach this Level
+     + `allocPoint` Level's individual allocation - ratio of the total allocation
+     + `balance` Total number of tokens deposited in positions at this Level
+    struct LevelInfo {
+        uint[] requiredMaturity;
+        uint[] allocPoint;
+        uint[] balance;
+    }
+
+     + @notice Object representing pending rewards and related data for a position.
+     + `relicId` The NFT ID of the given position.
+     + `poolId` ID of the pool to which this position belongs.
+     + `pendingReward` pending reward amount for a given position.
+    struct PendingReward {
+        uint relicId;
+        uint poolId;
+        uint pendingReward;
+    }
+    */
 
     /*
      + @notice Constructs and initializes the contract
-     + @param _oath The OATH token contract address.
+     + @param _rewardToken The reward token contract address.
      + @param _emissionCurve The contract address for the EmissionCurve, which will return the emission rate
     */
-    constructor(IERC20 _oath, IEmissionCurve _emissionCurve)
+    constructor(IERC20 _rewardToken, IEmissionCurve _emissionCurve)
         ERC721("Reliquary Deposit", "RELIC")
     {
-        oath = _oath;
+        rewardToken = _rewardToken;
         emissionCurve = _emissionCurve;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
@@ -140,11 +214,11 @@ contract Reliquary is
     }
 
     /// @notice Returns the number of Reliquary pools.
-    function poolLength() public view override returns (uint pools) {
+    function poolLength() public view override returns (uint256 pools) {
         pools = poolInfo.length;
     }
 
-    function tokenURI(uint tokenId)
+    function tokenURI(uint256 tokenId)
         public
         view
         override(ERC721)
@@ -167,7 +241,7 @@ contract Reliquary is
         emit LogSetEmissionCurve(_emissionCurve);
     }
 
-    function getPositionForId(uint relicId)
+    function getPositionForId(uint256 relicId)
         external
         view
         override
@@ -176,7 +250,7 @@ contract Reliquary is
         position = positionForId[relicId];
     }
 
-    function getPoolInfo(uint pid)
+    function getPoolInfo(uint256 pid)
         external
         view
         override
@@ -185,7 +259,7 @@ contract Reliquary is
         pool = poolInfo[pid];
     }
 
-    function getLevelInfo(uint pid)
+    function getLevelInfo(uint256 pid)
         external
         view
         override
@@ -194,9 +268,9 @@ contract Reliquary is
         levelInfo = levels[pid];
     }
 
-    function burn(uint tokenId) public override(IReliquary, ERC721Burnable) {
+    function burn(uint256 tokenId) public override(IReliquary, ERC721Burnable) {
         require(positionForId[tokenId].amount == 0, "contains deposit");
-        require(pendingOath(tokenId) == 0, "contains pending rewards");
+        require(pendingReward(tokenId) == 0, "contains pending rewards");
         super.burn(tokenId);
     }
 
@@ -213,15 +287,15 @@ contract Reliquary is
      + @param _nftDescriptor The contract address for NFTDescriptor, which will return the token URI
     */
     function addPool(
-        uint allocPoint,
+        uint256 allocPoint,
         IERC20 _poolToken,
         IRewarder _rewarder,
-        uint[] calldata requiredMaturity,
-        uint[] calldata allocPoints,
+        uint256[] calldata requiredMaturity,
+        uint256[] calldata allocPoints,
         string memory name,
         INFTDescriptor _nftDescriptor
     ) external override onlyRole(OPERATOR) {
-        require(_poolToken != oath, "cannot add reward token as pool");
+        require(_poolToken != rewardToken, "cannot add reward token as pool");
         require(requiredMaturity.length != 0, "empty levels array");
         require(
             requiredMaturity.length == allocPoints.length,
@@ -229,9 +303,9 @@ contract Reliquary is
         );
         require(requiredMaturity[0] == 0, "requiredMaturity[0] != 0");
         if (requiredMaturity.length > 1) {
-            uint highestMaturity;
+            uint256 highestMaturity;
             for (
-                uint i = 1;
+                uint256 i = 1;
                 i < requiredMaturity.length;
                 i = _uncheckedInc(i)
             ) {
@@ -243,12 +317,12 @@ contract Reliquary is
             }
         }
 
-        uint length = poolLength();
-        for (uint i; i < length; i = _uncheckedInc(i)) {
+        uint256 length = poolLength();
+        for (uint256 i; i < length; i = _uncheckedInc(i)) {
             _updatePool(i);
         }
 
-        uint totalAlloc = totalAllocPoint + allocPoint;
+        uint256 totalAlloc = totalAllocPoint + allocPoint;
         require(totalAlloc != 0, "totalAllocPoint cannot be 0");
         totalAllocPoint = totalAlloc;
         poolToken.push(_poolToken);
@@ -259,7 +333,7 @@ contract Reliquary is
             PoolInfo({
                 allocPoint: allocPoint,
                 lastRewardTime: block.timestamp,
-                accOathPerShare: 0,
+                accRewardPerShare: 0,
                 name: name
             })
         );
@@ -267,7 +341,7 @@ contract Reliquary is
             LevelInfo({
                 requiredMaturity: requiredMaturity,
                 allocPoint: allocPoints,
-                balance: new uint[](allocPoints.length)
+                balance: new uint256[](allocPoints.length)
             })
         );
 
@@ -282,7 +356,7 @@ contract Reliquary is
 
     /*
      + @notice Modify the given pool's properties.
-     +         Can only be called by the operator.
+     +         Can only be called by the owner.
      +
      + @param pid The index of the pool. See `poolInfo`.
      + @param allocPoint New AP of the pool.
@@ -292,8 +366,8 @@ contract Reliquary is
      + @param _nftDescriptor The contract address for NFTDescriptor, which will return the token URI
     */
     function modifyPool(
-        uint pid,
-        uint allocPoint,
+        uint256 pid,
+        uint256 allocPoint,
         IRewarder _rewarder,
         string calldata name,
         INFTDescriptor _nftDescriptor,
@@ -301,13 +375,13 @@ contract Reliquary is
     ) external override onlyRole(OPERATOR) {
         require(pid < poolInfo.length, "set: pool does not exist");
 
-        uint length = poolLength();
-        for (uint i; i < length; i = _uncheckedInc(i)) {
+        uint256 length = poolLength();
+        for (uint256 i; i < length; i = _uncheckedInc(i)) {
             _updatePool(i);
         }
 
         PoolInfo storage pool = poolInfo[pid];
-        uint totalAlloc = totalAllocPoint + allocPoint - pool.allocPoint;
+        uint256 totalAlloc = totalAllocPoint + allocPoint - pool.allocPoint;
         require(totalAlloc != 0, "totalAllocPoint cannot be 0");
         totalAllocPoint = totalAlloc;
         pool.allocPoint = allocPoint;
@@ -328,49 +402,154 @@ contract Reliquary is
     }
 
     /*
-     + @notice View function to see pending OATH on frontend.
-     + @param relicId ID of the position.
-     + @return pending OATH reward for a given position owner.
+     + @notice Allows an address with the MATURITY_MODIFIER role to modify a position's maturity within set limits.
+     + @param relicId The NFT ID of the position being modified.
+     + @param points Number of seconds to reduce the position's entry by (increasing maturity), before maximum.
+     + @return receivedBonus Actual maturity bonus received after maximum.
     */
-    function pendingOath(uint relicId)
+    function modifyMaturity(uint256 relicId, uint256 points)
+        external
+        override
+        onlyRole(MATURITY_MODIFIER)
+        returns (uint256 receivedBonus)
+    {
+        receivedBonus = Math.max(1 days, points);
+        PositionInfo storage position = positionForId[relicId];
+        position.entry -= receivedBonus;
+        _updatePosition(0, relicId, Kind.OTHER, address(0));
+
+        emit MaturityBonus(
+            position.poolId,
+            ownerOf(relicId),
+            relicId,
+            receivedBonus
+        );
+    }
+
+    function updateLastMaturityBonus(uint256 relicId)
+        external
+        override
+        onlyRole(MATURITY_MODIFIER)
+    {
+        PositionInfo storage position = positionForId[relicId];
+        position.lastMaturityBonus = block.timestamp;
+    }
+
+    /*
+     + @notice View function to see pending reward tokens on frontend.
+     + @param relicId ID of the position.
+     + @return pending reward amount for a given position owner.
+    */
+    function pendingReward(uint256 relicId)
         public
         view
         override
-        returns (uint pending)
+        returns (uint256 pending)
     {
         PositionInfo storage position = positionForId[relicId];
-        uint poolId = position.poolId;
+        uint256 poolId = position.poolId;
         PoolInfo storage pool = poolInfo[poolId];
-        uint accOathPerShare = pool.accOathPerShare;
-        uint lpSupply = _poolBalance(position.poolId);
+        uint256 accRewardPerShare = pool.accRewardPerShare;
+        uint256 lpSupply = _poolBalance(position.poolId);
 
-        uint secondsSinceReward = block.timestamp - pool.lastRewardTime;
+        uint256 lastRewardTime = pool.lastRewardTime;
+        uint256 secondsSinceReward = block.timestamp - lastRewardTime;
         if (secondsSinceReward != 0 && lpSupply != 0) {
-            uint oathReward = (secondsSinceReward *
-                _baseEmissionsPerSecond() *
+            uint256 reward = (secondsSinceReward *
+                _baseEmissionsPerSecond(lastRewardTime) *
                 pool.allocPoint) / totalAllocPoint;
-            accOathPerShare += (oathReward * ACC_OATH_PRECISION) / lpSupply;
+            accRewardPerShare += (reward * ACC_REWARD_PRECISION) / lpSupply;
         }
 
-        uint leveledAmount = position.amount *
+        uint256 leveledAmount = position.amount *
             levels[poolId].allocPoint[position.level];
         pending =
-            (leveledAmount * accOathPerShare) /
-            ACC_OATH_PRECISION +
+            (leveledAmount * accRewardPerShare) /
+            ACC_REWARD_PRECISION +
             position.rewardCredit -
             position.rewardDebt;
+    }
+
+    /*
+     + @notice View function to retrieve the relicIds, poolIds, and pendingReward for each Relic owned by an address.
+     + @param owner Address of the owner to retrieve info for.
+     + @return pendingRewards Array of PendingReward objects.
+    */
+    function pendingRewardsOfOwner(address owner)
+        external
+        view
+        override
+        returns (PendingReward[] memory pendingRewards)
+    {
+        uint256 balance = balanceOf(owner);
+        pendingRewards = new PendingReward[](balance);
+        for (uint256 i; i < balance; i = _uncheckedInc(i)) {
+            uint256 relicId = tokenOfOwnerByIndex(owner, i);
+            pendingRewards[i] = PendingReward({
+                relicId: relicId,
+                poolId: positionForId[relicId].poolId,
+                pendingReward: pendingReward(relicId)
+            });
+        }
+    }
+
+    /*
+     + @notice View function to retrieve owned positions for an address.
+     + @param owner Address of the owner to retrieve info for.
+     + @return relicIds Each relicId owned by the given address.
+     + @return positionInfos The PositionInfo object for each relicId.
+    */
+    function relicPositionsOfOwner(address owner)
+        external
+        view
+        override
+        returns (uint256[] memory relicIds, PositionInfo[] memory positionInfos)
+    {
+        uint256 balance = balanceOf(owner);
+        relicIds = new uint256[](balance);
+        positionInfos = new PositionInfo[](balance);
+        for (uint256 i; i < balance; i = _uncheckedInc(i)) {
+            relicIds[i] = tokenOfOwnerByIndex(owner, i);
+            positionInfos[i] = positionForId[relicIds[i]];
+        }
+    }
+
+    /*
+     + @notice View function to see level of position if it were to be updated.
+     + @param relicId ID of the position.
+     + @return level Level for given position upon update.
+    */
+    function levelOnUpdate(uint256 relicId)
+        public
+        view
+        override
+        returns (uint256 level)
+    {
+        PositionInfo storage position = positionForId[relicId];
+        LevelInfo storage levelInfo = levels[position.poolId];
+        uint256 length = levelInfo.requiredMaturity.length;
+        if (length == 1) {
+            return 0;
+        }
+
+        uint256 maturity = block.timestamp - position.entry;
+        for (level = length - 1; true; level = _uncheckedDec(level)) {
+            if (maturity >= levelInfo.requiredMaturity[level]) {
+                break;
+            }
+        }
     }
 
     /*
      + @notice Update reward variables for all pools. Be careful of gas spending!
      + @param pids Pool IDs of all to be updated. Make sure to update all active pools.
     */
-    function massUpdatePools(uint[] calldata pids)
+    function massUpdatePools(uint256[] calldata pids)
         external
         override
         nonReentrant
     {
-        for (uint i; i < pids.length; i = _uncheckedInc(i)) {
+        for (uint256 i; i < pids.length; i = _uncheckedInc(i)) {
             _updatePool(pids[i]);
         }
     }
@@ -380,32 +559,36 @@ contract Reliquary is
      + @param pid The index of the pool. See `poolInfo`.
      + @return pool Returns the pool that was updated.
     */
-    function updatePool(uint pid) external override nonReentrant {
+    function updatePool(uint256 pid) external override nonReentrant {
         _updatePool(pid);
     }
 
     /// @dev Internal _updatePool function without nonReentrant modifier
-    function _updatePool(uint pid) internal returns (uint accOathPerShare) {
+    function _updatePool(uint256 pid)
+        internal
+        returns (uint256 accRewardPerShare)
+    {
         require(pid < poolLength(), "invalid pool ID");
         PoolInfo storage pool = poolInfo[pid];
-        uint timestamp = block.timestamp;
-        uint secondsSinceReward = timestamp - pool.lastRewardTime;
+        uint256 timestamp = block.timestamp;
+        uint256 lastRewardTime = pool.lastRewardTime;
+        uint256 secondsSinceReward = timestamp - lastRewardTime;
 
-        accOathPerShare = pool.accOathPerShare;
+        accRewardPerShare = pool.accRewardPerShare;
         if (secondsSinceReward != 0) {
-            uint lpSupply = _poolBalance(pid);
+            uint256 lpSupply = _poolBalance(pid);
 
             if (lpSupply != 0) {
-                uint oathReward = (secondsSinceReward *
-                    _baseEmissionsPerSecond() *
+                uint256 reward = (secondsSinceReward *
+                    _baseEmissionsPerSecond(lastRewardTime) *
                     pool.allocPoint) / totalAllocPoint;
-                accOathPerShare += (oathReward * ACC_OATH_PRECISION) / lpSupply;
-                pool.accOathPerShare = accOathPerShare;
+                accRewardPerShare += (reward * ACC_REWARD_PRECISION) / lpSupply;
+                pool.accRewardPerShare = accRewardPerShare;
             }
 
             pool.lastRewardTime = timestamp;
 
-            emit LogUpdatePool(pid, timestamp, lpSupply, accOathPerShare);
+            emit LogUpdatePool(pid, timestamp, lpSupply, accRewardPerShare);
         }
     }
 
@@ -417,42 +600,54 @@ contract Reliquary is
     */
     function createRelicAndDeposit(
         address to,
-        uint pid,
-        uint amount
-    ) external override nonReentrant returns (uint id) {
+        uint256 pid,
+        uint256 amount
+    ) external override nonReentrant returns (uint256 id) {
         require(pid < poolInfo.length, "invalid pool ID");
         id = _mint(to);
-        positionForId[id].poolId = pid;
+        PositionInfo storage position = positionForId[id];
+        position.poolId = pid;
+        position.genesis = block.timestamp;
         _deposit(amount, id);
+        emit CreateRelic(pid, to, id);
     }
 
     /*
-     + @notice Deposit LP tokens to Reliquary for OATH allocation.
+     + @notice Deposit LP tokens to Reliquary for reward token allocation.
      + @param amount Token amount to deposit.
-     + @param relicId NFT ID of the receiver of `amount` deposit benefit.
+     + @param relicId NFT ID of the position being deposited to.
     */
-    function deposit(uint amount, uint relicId) external override nonReentrant {
+    function deposit(uint256 amount, uint256 relicId)
+        external
+        override
+        nonReentrant
+    {
         _requireApprovedOrOwner(relicId);
         _deposit(amount, relicId);
     }
 
     /// @dev Internal deposit function that assumes relicId is valid.
-    function _deposit(uint amount, uint relicId) internal {
+    function _deposit(uint256 amount, uint256 relicId) internal {
         require(amount != 0, "depositing 0 amount");
 
-        (uint poolId, ) = _updatePosition(amount, relicId, Kind.DEPOSIT, false);
+        (uint256 poolId, ) = _updatePosition(
+            amount,
+            relicId,
+            Kind.DEPOSIT,
+            address(0)
+        );
 
         poolToken[poolId].safeTransferFrom(msg.sender, address(this), amount);
 
-        emit Deposit(poolId, amount, msg.sender, relicId);
+        emit Deposit(poolId, amount, ownerOf(relicId), relicId);
     }
 
     /*
      + @notice Withdraw LP tokens.
      + @param amount token amount to withdraw.
-     + @param relicId NFT ID of the receiver of the tokens and OATH rewards.
+     + @param relicId NFT ID of the position being withdrawn.
     */
-    function withdraw(uint amount, uint relicId)
+    function withdraw(uint256 amount, uint256 relicId)
         external
         override
         nonReentrant
@@ -460,11 +655,11 @@ contract Reliquary is
         require(amount != 0, "withdrawing 0 amount");
         _requireApprovedOrOwner(relicId);
 
-        (uint poolId, ) = _updatePosition(
+        (uint256 poolId, ) = _updatePosition(
             amount,
             relicId,
             Kind.WITHDRAW,
-            false
+            address(0)
         );
 
         poolToken[poolId].safeTransfer(msg.sender, amount);
@@ -474,58 +669,64 @@ contract Reliquary is
 
     /*
      + @notice Harvest proceeds for transaction sender to owner of `relicId`.
-     + @param relicId NFT ID of the receiver of OATH rewards.
+     + @param relicId NFT ID of the position being harvested.
+     + @param harvestTo Address to send rewards to (zero address if harvest should not be performed).
     */
-    function harvest(uint relicId) external override nonReentrant {
+    function harvest(uint256 relicId, address harvestTo)
+        external
+        override
+        nonReentrant
+    {
         _requireApprovedOrOwner(relicId);
 
-        (uint poolId, uint _pendingOath) = _updatePosition(
+        (uint256 poolId, uint256 _pendingReward) = _updatePosition(
             0,
             relicId,
             Kind.OTHER,
-            true
+            harvestTo
         );
 
-        emit Harvest(poolId, _pendingOath, relicId);
+        emit Harvest(poolId, _pendingReward, harvestTo, relicId);
     }
 
     /*
      + @notice Withdraw LP tokens and harvest proceeds for transaction sender to owner of `relicId`.
      + @param amount token amount to withdraw.
-     + @param relicId NFT ID of the receiver of the tokens and OATH rewards.
+     + @param relicId NFT ID of the position being withdrawn and harvested.
+     + @param harvestTo Address to send rewards to (zero address if harvest should not be performed).
     */
-    function withdrawAndHarvest(uint amount, uint relicId)
-        external
-        override
-        nonReentrant
-    {
+    function withdrawAndHarvest(
+        uint256 amount,
+        uint256 relicId,
+        address harvestTo
+    ) external override nonReentrant {
         require(amount != 0, "withdrawing 0 amount");
         _requireApprovedOrOwner(relicId);
 
-        (uint poolId, uint _pendingOath) = _updatePosition(
+        (uint256 poolId, uint256 _pendingReward) = _updatePosition(
             amount,
             relicId,
             Kind.WITHDRAW,
-            true
+            harvestTo
         );
 
         poolToken[poolId].safeTransfer(msg.sender, amount);
 
         emit Withdraw(poolId, amount, msg.sender, relicId);
-        emit Harvest(poolId, _pendingOath, relicId);
+        emit Harvest(poolId, _pendingReward, harvestTo, relicId);
     }
 
     /*
      + @notice Withdraw without caring about rewards. EMERGENCY ONLY.
-     + @param relicId NFT ID of the receiver of the tokens.
+     + @param relicId NFT ID of the position to emergency withdraw from and burn.
     */
-    function emergencyWithdraw(uint relicId) external override nonReentrant {
+    function emergencyWithdraw(uint256 relicId) external override nonReentrant {
         address to = ownerOf(relicId);
         require(to == msg.sender, "you do not own this position");
 
         PositionInfo storage position = positionForId[relicId];
-        uint amount = position.amount;
-        uint poolId = position.poolId;
+        uint256 amount = position.amount;
+        uint256 poolId = position.poolId;
 
         levels[poolId].balance[position.level] -= amount;
 
@@ -537,32 +738,33 @@ contract Reliquary is
         emit EmergencyWithdraw(poolId, amount, to, relicId);
     }
 
-    /// @notice Update position without performing a deposit/withdraw/harvest
-    /// @param relicId The NFT ID of the position being updated
-    function updatePosition(uint relicId) external override nonReentrant {
-        _updatePosition(0, relicId, Kind.OTHER, false);
+    /// @notice Update position without performing a deposit/withdraw/harvest.
+    /// @param relicId The NFT ID of the position being updated.
+    function updatePosition(uint256 relicId) external override nonReentrant {
+        require(_exists(relicId), "Relic doesn't exist");
+        _updatePosition(0, relicId, Kind.OTHER, address(0));
     }
 
     /*
-     + @dev Internal function called whenever a position's state needs to be modified
-     + @param amount Amount of poolToken to deposit/withdraw
-     + @param relicId The NFT ID of the position being updated
-     + @param kind Indicates whether tokens are being added to, or removed from, a pool
-     + @param _harvest Whether a harvest should be performed
-     + @return pending OATH reward for a given position owner.
+     + @dev Internal function called whenever a position's state needs to be modified.
+     + @param amount Amount of poolToken to deposit/withdraw.
+     + @param relicId The NFT ID of the position being updated.
+     + @param kind Indicates whether tokens are being added to, or removed from, a pool.
+     + @param harvestTo Address to send rewards to (zero address if harvest should not be performed).
+     + @return pending reward for a given position owner.
     */
     function _updatePosition(
-        uint amount,
-        uint relicId,
+        uint256 amount,
+        uint256 relicId,
         Kind kind,
-        bool _harvest
-    ) internal returns (uint poolId, uint _pendingOath) {
+        address harvestTo
+    ) internal returns (uint256 poolId, uint256 _pendingReward) {
         PositionInfo storage position = positionForId[relicId];
         poolId = position.poolId;
-        uint accOathPerShare = _updatePool(poolId);
+        uint256 accRewardPerShare = _updatePool(poolId);
 
-        uint oldAmount = position.amount;
-        uint newAmount;
+        uint256 oldAmount = position.amount;
+        uint256 newAmount;
         if (kind == Kind.DEPOSIT) {
             _updateEntry(amount, relicId);
             newAmount = oldAmount + amount;
@@ -574,8 +776,8 @@ contract Reliquary is
             newAmount = oldAmount;
         }
 
-        uint oldLevel = position.level;
-        uint newLevel = _updateLevel(relicId);
+        uint256 oldLevel = position.level;
+        uint256 newLevel = _updateLevel(relicId);
         if (oldLevel != newLevel) {
             levels[poolId].balance[oldLevel] -= oldAmount;
             levels[poolId].balance[newLevel] += newAmount;
@@ -585,29 +787,30 @@ contract Reliquary is
             levels[poolId].balance[oldLevel] -= amount;
         }
 
-        _pendingOath =
+        _pendingReward =
             (oldAmount *
                 levels[poolId].allocPoint[oldLevel] *
-                accOathPerShare) /
-            ACC_OATH_PRECISION -
+                accRewardPerShare) /
+            ACC_REWARD_PRECISION -
             position.rewardDebt;
         position.rewardDebt =
             (newAmount *
                 levels[poolId].allocPoint[newLevel] *
-                accOathPerShare) /
-            ACC_OATH_PRECISION;
+                accRewardPerShare) /
+            ACC_REWARD_PRECISION;
 
-        if (!_harvest && _pendingOath != 0) {
-            position.rewardCredit += _pendingOath;
+        bool _harvest = harvestTo != address(0);
+        if (!_harvest && _pendingReward != 0) {
+            position.rewardCredit += _pendingReward;
         } else if (_harvest) {
-            uint total = _pendingOath + position.rewardCredit;
-            uint received = _receivedOath(total);
+            uint256 total = _pendingReward + position.rewardCredit;
+            uint256 received = _receivedReward(total);
             position.rewardCredit = total - received;
             if (received != 0) {
-                oath.safeTransfer(msg.sender, received);
+                rewardToken.safeTransfer(harvestTo, received);
                 IRewarder _rewarder = rewarder[poolId];
                 if (address(_rewarder) != address(0)) {
-                    _rewarder.onOathReward(relicId, received);
+                    _rewarder.onReward(relicId, received, harvestTo);
                 }
             }
         }
@@ -631,40 +834,43 @@ contract Reliquary is
     /// @param to Address to mint the Relic to
     /// @return newId The NFT ID of the new Relic
     function split(
-        uint fromId,
-        uint amount,
+        uint256 fromId,
+        uint256 amount,
         address to
-    ) external override nonReentrant returns (uint newId) {
+    ) external override nonReentrant returns (uint256 newId) {
         require(amount != 0, "cannot split zero amount");
         _requireApprovedOrOwner(fromId);
 
         PositionInfo storage fromPosition = positionForId[fromId];
-        uint fromAmount = fromPosition.amount;
+        uint256 fromAmount = fromPosition.amount;
         require(amount <= fromAmount, "amount exceeds deposited");
-        fromPosition.amount = fromAmount - amount;
+        uint256 newFromAmount = fromAmount - amount;
+        fromPosition.amount = newFromAmount;
 
         newId = _mint(to);
         PositionInfo storage newPosition = positionForId[newId];
+        newPosition.genesis = block.timestamp;
         newPosition.amount = amount;
         newPosition.entry = fromPosition.entry;
-        uint level = fromPosition.level;
+        uint256 level = fromPosition.level;
         newPosition.level = level;
-        uint poolId = fromPosition.poolId;
+        uint256 poolId = fromPosition.poolId;
         newPosition.poolId = poolId;
 
-        uint multiplier = _updatePool(poolId) *
+        uint256 multiplier = _updatePool(poolId) *
             levels[poolId].allocPoint[level];
-        uint pendingFrom = (fromAmount * multiplier) /
-            ACC_OATH_PRECISION -
+        uint256 pendingFrom = (fromAmount * multiplier) /
+            ACC_REWARD_PRECISION -
             fromPosition.rewardDebt;
         if (pendingFrom != 0) {
             fromPosition.rewardCredit += pendingFrom;
         }
         fromPosition.rewardDebt =
-            (fromAmount * multiplier) /
-            ACC_OATH_PRECISION;
-        newPosition.rewardDebt = (amount * multiplier) / ACC_OATH_PRECISION;
+            (newFromAmount * multiplier) /
+            ACC_REWARD_PRECISION;
+        newPosition.rewardDebt = (amount * multiplier) / ACC_REWARD_PRECISION;
 
+        emit CreateRelic(poolId, to, newId);
         emit Split(fromId, newId, amount);
     }
 
@@ -673,9 +879,9 @@ contract Reliquary is
     /// @param toId The NFT ID of the Relic being transferred to
     /// @param amount The amount being transferred
     function shift(
-        uint fromId,
-        uint toId,
-        uint amount
+        uint256 fromId,
+        uint256 toId,
+        uint256 amount
     ) external override nonReentrant {
         require(amount != 0, "cannot shift zero amount");
         require(fromId != toId, "cannot shift into same Relic");
@@ -683,28 +889,28 @@ contract Reliquary is
         _requireApprovedOrOwner(toId);
 
         PositionInfo storage fromPosition = positionForId[fromId];
-        uint fromAmount = fromPosition.amount;
+        uint256 fromAmount = fromPosition.amount;
         require(amount <= fromAmount, "amount exceeds deposited");
 
-        uint poolId = fromPosition.poolId;
+        uint256 poolId = fromPosition.poolId;
         PositionInfo storage toPosition = positionForId[toId];
         require(poolId == toPosition.poolId, "Relics not of the same pool");
 
-        uint toAmount = toPosition.amount;
+        uint256 toAmount = toPosition.amount;
         toPosition.entry =
             (fromAmount * fromPosition.entry + toAmount * toPosition.entry) /
             (fromAmount + toAmount);
 
-        uint newFromAmount = fromAmount - amount;
+        uint256 newFromAmount = fromAmount - amount;
         fromPosition.amount = newFromAmount;
 
-        uint newToAmount = toAmount + amount;
+        uint256 newToAmount = toAmount + amount;
         toPosition.amount = newToAmount;
 
         (
-            uint fromLevel,
-            uint oldToLevel,
-            uint newToLevel
+            uint256 fromLevel,
+            uint256 oldToLevel,
+            uint256 newToLevel
         ) = _shiftLevelBalances(
                 fromId,
                 toId,
@@ -714,31 +920,31 @@ contract Reliquary is
                 newToAmount
             );
 
-        uint accOathPerShare = _updatePool(poolId);
-        uint fromMultiplier = accOathPerShare *
+        uint256 accRewardPerShare = _updatePool(poolId);
+        uint256 fromMultiplier = accRewardPerShare *
             levels[poolId].allocPoint[fromLevel];
-        uint pendingFrom = (fromAmount * fromMultiplier) /
-            ACC_OATH_PRECISION -
+        uint256 pendingFrom = (fromAmount * fromMultiplier) /
+            ACC_REWARD_PRECISION -
             fromPosition.rewardDebt;
         if (pendingFrom != 0) {
             fromPosition.rewardCredit += pendingFrom;
         }
-        uint pendingTo = (toAmount *
+        uint256 pendingTo = (toAmount *
             levels[poolId].allocPoint[oldToLevel] *
-            accOathPerShare) /
-            ACC_OATH_PRECISION -
+            accRewardPerShare) /
+            ACC_REWARD_PRECISION -
             toPosition.rewardDebt;
         if (pendingTo != 0) {
             toPosition.rewardCredit += pendingTo;
         }
         fromPosition.rewardDebt =
             (newFromAmount * fromMultiplier) /
-            ACC_OATH_PRECISION;
+            ACC_REWARD_PRECISION;
         toPosition.rewardDebt =
             (newToAmount *
-                accOathPerShare *
+                accRewardPerShare *
                 levels[poolId].allocPoint[newToLevel]) /
-            ACC_OATH_PRECISION;
+            ACC_REWARD_PRECISION;
 
         emit Shift(fromId, toId, amount);
     }
@@ -747,20 +953,24 @@ contract Reliquary is
     /// and updating maturity in the receiving Relic
     /// @param fromId The NFT ID of the Relic to transfer from
     /// @param toId The NFT ID of the Relic being transferred to
-    function merge(uint fromId, uint toId) external override nonReentrant {
+    function merge(uint256 fromId, uint256 toId)
+        external
+        override
+        nonReentrant
+    {
         require(fromId != toId, "cannot merge same Relic");
         _requireApprovedOrOwner(fromId);
         _requireApprovedOrOwner(toId);
 
         PositionInfo storage fromPosition = positionForId[fromId];
-        uint fromAmount = fromPosition.amount;
+        uint256 fromAmount = fromPosition.amount;
 
-        uint poolId = fromPosition.poolId;
+        uint256 poolId = fromPosition.poolId;
         PositionInfo storage toPosition = positionForId[toId];
         require(poolId == toPosition.poolId, "Relics not of the same pool");
 
-        uint toAmount = toPosition.amount;
-        uint newToAmount = toAmount + fromAmount;
+        uint256 toAmount = toPosition.amount;
+        uint256 newToAmount = toAmount + fromAmount;
         require(newToAmount != 0, "cannot merge empty Relics");
         toPosition.entry =
             (fromAmount * fromPosition.entry + toAmount * toPosition.entry) /
@@ -769,9 +979,9 @@ contract Reliquary is
         toPosition.amount = newToAmount;
 
         (
-            uint fromLevel,
-            uint oldToLevel,
-            uint newToLevel
+            uint256 fromLevel,
+            uint256 oldToLevel,
+            uint256 newToLevel
         ) = _shiftLevelBalances(
                 fromId,
                 toId,
@@ -781,13 +991,13 @@ contract Reliquary is
                 newToAmount
             );
 
-        uint accOathPerShare = _updatePool(poolId);
-        uint pendingTo = (accOathPerShare *
+        uint256 accRewardPerShare = _updatePool(poolId);
+        uint256 pendingTo = (accRewardPerShare *
             (fromAmount *
                 levels[poolId].allocPoint[fromLevel] +
                 toAmount *
                 levels[poolId].allocPoint[oldToLevel])) /
-            ACC_OATH_PRECISION +
+            ACC_REWARD_PRECISION +
             fromPosition.rewardCredit -
             fromPosition.rewardDebt -
             toPosition.rewardDebt;
@@ -796,9 +1006,9 @@ contract Reliquary is
         }
         toPosition.rewardDebt =
             (newToAmount *
-                accOathPerShare *
+                accRewardPerShare *
                 levels[poolId].allocPoint[newToLevel]) /
-            ACC_OATH_PRECISION;
+            ACC_REWARD_PRECISION;
 
         _burn(fromId);
         delete positionForId[fromId];
@@ -807,18 +1017,18 @@ contract Reliquary is
     }
 
     function _shiftLevelBalances(
-        uint fromId,
-        uint toId,
-        uint poolId,
-        uint amount,
-        uint toAmount,
-        uint newToAmount
+        uint256 fromId,
+        uint256 toId,
+        uint256 poolId,
+        uint256 amount,
+        uint256 toAmount,
+        uint256 newToAmount
     )
         internal
         returns (
-            uint fromLevel,
-            uint oldToLevel,
-            uint newToLevel
+            uint256 fromLevel,
+            uint256 oldToLevel,
+            uint256 newToLevel
         )
     {
         fromLevel = positionForId[fromId].level;
@@ -839,21 +1049,25 @@ contract Reliquary is
         }
     }
 
-    /// @notice Calculate how much the owner will actually receive on harvest, given available OATH
-    /// @param _pendingOath Amount of OATH owed
+    /// @notice Calculate how much the owner will actually receive on harvest, given available reward tokens
+    /// @param _pendingReward Amount of reward token owed
     /// @return received The minimum between amount owed and amount available
-    function _receivedOath(uint _pendingOath)
+    function _receivedReward(uint256 _pendingReward)
         internal
         view
-        returns (uint received)
+        returns (uint256 received)
     {
-        uint available = oath.balanceOf(address(this));
-        received = (available > _pendingOath) ? _pendingOath : available;
+        uint256 available = rewardToken.balanceOf(address(this));
+        received = (available > _pendingReward) ? _pendingReward : available;
     }
 
     /// @notice Gets the base emission rate from external, upgradable contract
-    function _baseEmissionsPerSecond() internal view returns (uint rate) {
-        rate = emissionCurve.getRate();
+    function _baseEmissionsPerSecond(uint256 lastRewardTime)
+        internal
+        view
+        returns (uint256 rate)
+    {
+        rate = emissionCurve.getRate(lastRewardTime);
         require(rate <= 6e18, "maximum emission rate exceeded");
     }
 
@@ -862,16 +1076,16 @@ contract Reliquary is
      + @param addedValue New value being added
      + @param oldValue Current amount of x
     */
-    function _findWeight(uint addedValue, uint oldValue)
+    function _findWeight(uint256 addedValue, uint256 oldValue)
         internal
         pure
-        returns (uint weightNew)
+        returns (uint256 weightNew)
     {
         if (oldValue == 0) {
             weightNew = 1e18;
         } else {
             if (oldValue < addedValue) {
-                uint weightOld = (oldValue * 1e18) / (addedValue + oldValue);
+                uint256 weightOld = (oldValue * 1e18) / (addedValue + oldValue);
                 weightNew = 1e18 - weightOld;
             } else if (addedValue < oldValue) {
                 weightNew = (addedValue * 1e18) / (addedValue + oldValue);
@@ -886,34 +1100,24 @@ contract Reliquary is
      + @param amount The amount of the deposit / withdrawal
      + @param relicId The NFT ID of the position being updated
     */
-    function _updateEntry(uint amount, uint relicId) internal {
+    function _updateEntry(uint256 amount, uint256 relicId) internal {
         PositionInfo storage position = positionForId[relicId];
-        uint weight = _findWeight(amount, position.amount);
-        uint maturity = block.timestamp - position.entry;
+        uint256 weight = _findWeight(amount, position.amount);
+        uint256 maturity = block.timestamp - position.entry;
         position.entry += (maturity * weight) / 1e18;
     }
 
     /*
      + @notice Updates the position's level based on entry time
      + @param relicId The NFT ID of the position being updated
+     + @return newLevel Level of position after update
     */
-    function _updateLevel(uint relicId) internal returns (uint newLevel) {
+    function _updateLevel(uint256 relicId) internal returns (uint256 newLevel) {
+        newLevel = levelOnUpdate(relicId);
         PositionInfo storage position = positionForId[relicId];
-        LevelInfo storage levelInfo = levels[position.poolId];
-        uint length = levelInfo.requiredMaturity.length;
-        if (length == 1) {
-            return 0;
-        }
-
-        uint maturity = block.timestamp - position.entry;
-        for (newLevel = length - 1; true; newLevel = _uncheckedDec(newLevel)) {
-            if (maturity >= levelInfo.requiredMaturity[newLevel]) {
-                if (position.level != newLevel) {
-                    position.level = newLevel;
-                    emit LevelChanged(relicId, newLevel);
-                }
-                break;
-            }
+        if (position.level != newLevel) {
+            position.level = newLevel;
+            emit LevelChanged(relicId, newLevel);
         }
     }
 
@@ -922,17 +1126,26 @@ contract Reliquary is
      + @param pid The index of the pool. See `poolInfo`.
      + @return The amount of pool tokens held by the contract
     */
-    function _poolBalance(uint pid) internal view returns (uint total) {
+    function _poolBalance(uint256 pid) internal view returns (uint256 total) {
         LevelInfo storage levelInfo = levels[pid];
-        uint length = levelInfo.balance.length;
-        for (uint i; i < length; i = _uncheckedInc(i)) {
+        uint256 length = levelInfo.balance.length;
+        for (uint256 i; i < length; i = _uncheckedInc(i)) {
             total += levelInfo.balance[i] * levelInfo.allocPoint[i];
         }
     }
 
+    function isApprovedOrOwner(address spender, uint256 relicId)
+        external
+        view
+        override
+        returns (bool)
+    {
+        return _isApprovedOrOwner(spender, relicId);
+    }
+
     /// @notice Require the sender is either the owner of the Relic or approved to transfer it
     /// @param relicId The NFT ID of the Relic
-    function _requireApprovedOrOwner(uint relicId) internal view {
+    function _requireApprovedOrOwner(uint256 relicId) internal view {
         require(
             _isApprovedOrOwner(msg.sender, relicId),
             "not owner or approved"
@@ -940,20 +1153,20 @@ contract Reliquary is
     }
 
     /// @dev Utility function to bypass overflow checking, saving gas
-    function _uncheckedInc(uint i) internal pure returns (uint) {
+    function _uncheckedInc(uint256 i) internal pure returns (uint256) {
         unchecked {
             return i + 1;
         }
     }
 
     /// @dev Utility function to bypass underflow checking, saving gas
-    function _uncheckedDec(uint i) internal pure returns (uint) {
+    function _uncheckedDec(uint256 i) internal pure returns (uint256) {
         unchecked {
             return i - 1;
         }
     }
 
-    function _mint(address to) private returns (uint id) {
+    function _mint(address to) private returns (uint256 id) {
         id = ++nonce;
         _safeMint(to, id);
     }
@@ -961,7 +1174,7 @@ contract Reliquary is
     function _beforeTokenTransfer(
         address from,
         address to,
-        uint tokenId
+        uint256 tokenId
     ) internal override(ERC721, ERC721Enumerable) {
         ERC721Enumerable._beforeTokenTransfer(from, to, tokenId);
     }

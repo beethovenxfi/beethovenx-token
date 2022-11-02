@@ -1,1 +1,6 @@
-{"contract":"ERC20Mock","address":"0x1ecDb4cf3e8BAD87bA409475216F72f237e8309B","args":["ohter-LP","other-LP","18","100000000000000000000000000"],"verified":false}
+{
+  "contract": "ERC20Mock",
+  "address": "0x1ecDb4cf3e8BAD87bA409475216F72f237e8309B",
+  "args": ["ohter-LP", "other-LP", "18", "100000000000000000000000000"],
+  "verified": false
+}
