@@ -42,6 +42,18 @@ const config: HardhatUserConfig = {
     deployer: 0,
   },
   networks: {
+    // hardhat: {
+    //   accounts: [
+    //     {
+    //       privateKey: `0x${process.env.DEPLOYER!}`,
+    //       balance: "100000000000000000000000",
+    //     },
+    //   ],
+    //   forking: {
+    //     url: "https://rpc.ftm.tools/",
+    //     blockNumber: 47870816,
+    //   },
+    // },
     localhost: {
       live: false,
       saveDeployments: true,
@@ -103,6 +115,16 @@ const config: HardhatUserConfig = {
             enabled: true,
             runs: 200,
           },
+        },
+      },
+      {
+        version: "0.8.15",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+          viaIR: true,
         },
       },
     ],
