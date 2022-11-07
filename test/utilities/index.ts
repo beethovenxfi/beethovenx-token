@@ -11,7 +11,7 @@ export function encodeParameters(types: any, values: any) {
   return abi.encode(types, values)
 }
 
-export function bn(amount: number, decimals: number = 18) {
+export function bn(amount: any, decimals: number = 18) {
   return BigNumber.from(amount).mul(BigNumber.from(BASE_TEN).pow(decimals))
 }
 
