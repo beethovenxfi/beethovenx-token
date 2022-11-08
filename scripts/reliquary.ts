@@ -21,7 +21,17 @@ async function reliquary() {
       name: "action",
       message: "Action",
       type: "list",
-      choices: ["add pool", "deposit", "withdraw", "harvest", "pendingRewardsByRelicId", "pendingRewardsOfOwner", "relicPositionsOfOwner"],
+      choices: [
+        "add pool",
+        "modify pool",
+        "poolInfo",
+        "deposit",
+        "withdraw",
+        "harvest",
+        "pendingRewardsByRelicId",
+        "pendingRewardsOfOwner",
+        "relicPositionsOfOwner",
+      ],
     },
   ])
 
@@ -111,6 +121,66 @@ async function reliquary() {
         )
       )
       console.log(`Added pool in tx ${tx}`)
+
+      break
+    }
+    case "modify pool": {
+      const modifyPoolAnswers = await inquirer.prompt([
+        {
+          name: "pid",
+          message: "Pool ID",
+          type: "input",
+        },
+        {
+          name: "alloc",
+          message: "allocation point",
+          type: "input",
+          default: "100",
+        },
+        {
+          name: "rewarder",
+          message: "Rewarder",
+          type: "input",
+          default: ADDRESS_ZERO,
+        },
+        {
+          name: "name",
+          message: "Name",
+          type: "input",
+        },
+        {
+          name: "nftDescriptor",
+          message: "NFT Descriptor",
+          type: "input",
+          default: "0xfD24cEE5E16cb301bDFA201D37f7bF80581576Ec",
+        },
+        {
+          name: "overrideRewarder",
+          message: "Override Rewarder?",
+          type: "input",
+          default: "false",
+        },
+      ])
+      console.log(
+        `Modifying pool ${modifyPoolAnswers.pid} with 
+        alloc: ${modifyPoolAnswers.alloc},
+        rewarder: ${modifyPoolAnswers.rewarder}, 
+        name: ${modifyPoolAnswers.name},
+        nftDescriptor: ${modifyPoolAnswers.nftDescriptor},
+        overrride Rewarder: ${modifyPoolAnswers.overrideRewarder}`
+      )
+
+      const tx = await waitForTxReceipt(
+        contract.modifyPool(
+          modifyPoolAnswers.pid,
+          modifyPoolAnswers.alloc,
+          modifyPoolAnswers.rewarder,
+          modifyPoolAnswers.name,
+          modifyPoolAnswers.nftDescriptor,
+          modifyPoolAnswers.overrideRewarder
+        )
+      )
+      console.log(`Modified pool in tx ${tx}`)
 
       break
     }
@@ -247,6 +317,16 @@ async function reliquary() {
           )} > level ${positionInfos[index].level} > entry ${positionInfos[index].entry}`
         )
       })
+      break
+    }
+    case "poolInfo": {
+      const poolInfoAnswers = await inquirer.prompt([{ name: "poolId", message: "pool ID", type: "input" }])
+      const poolInfo = await contract.getPoolInfo(poolInfoAnswers.poolId)
+      console.log(`Pool info for pid ${poolInfoAnswers.poolId},
+      name: ${poolInfo.name}
+      allocation points: ${poolInfo.allocPoint},
+      accRewardsPerShaer: ${poolInfo.accRewardPerShare}
+      lastRewardTime: ${poolInfo.lastRewardTime}`)
       break
     }
   }
