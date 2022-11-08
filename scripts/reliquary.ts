@@ -28,6 +28,9 @@ async function reliquary() {
         "deposit",
         "withdraw",
         "harvest",
+        "split",
+        "shift",
+        "merge",
         "pendingRewardsByRelicId",
         "pendingRewardsOfOwner",
         "relicPositionsOfOwner",
@@ -283,6 +286,51 @@ async function reliquary() {
 
       const tx = await waitForTxReceipt(contract.harvest(harvestAnswers.relicId, harvestAnswers.recipient))
       console.log(`Harvested from relic ${harvestAnswers.relicId} to ${harvestAnswers.recipient} in tx ${tx}`)
+      break
+    }
+    case "split": {
+      const splitAnswers = await inquirer.prompt([
+        {
+          ...relicIdQuestion,
+          name: "fromId",
+          message: "fromId",
+        },
+        recipientQuestion,
+        amountQuestion,
+      ])
+      console.log("Splitting nfts...")
+      const tx = await waitForTxReceipt(contract.split(splitAnswers.fromId, parseAmount(splitAnswers.amount), splitAnswers.recipient))
+      console.log(`Splitted from relic ID ${splitAnswers.fromId} ${splitAnswers.amount} LP's to ${splitAnswers.recipient} in tx ${tx}`)
+      break
+    }
+    case "shift": {
+      const shiftAnswers = await inquirer.prompt([
+        {
+          name: "fromId",
+          message: "fromId",
+        },
+        {
+          name: "toId",
+          message: "toId",
+        },
+        amountQuestion,
+      ])
+      const tx = await waitForTxReceipt(contract.shift(shiftAnswers.fromId, shiftAnswers.toId, parseAmount(shiftAnswers.amount)))
+      console.log(`shifted ${shiftAnswers.amount} LP's from relic ${shiftAnswers.fromId} to relic ${shiftAnswers.toId} in tx ${tx}`)
+      break
+    }
+    case "merge": {
+      const mergeAnswers = await inquirer.prompt([
+        {
+          name: "fromId",
+        },
+        {
+          name: "toId",
+        },
+      ])
+      console.log("Merging nfts...")
+      const tx = await waitForTxReceipt(contract.merge(mergeAnswers.fromId, mergeAnswers.toId))
+      console.log(`Merged relic ${mergeAnswers.fromId} into ${mergeAnswers.toId} in tx ${tx}`)
       break
     }
     case "pendingRewardsByRelicId": {
