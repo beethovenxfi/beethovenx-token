@@ -45,7 +45,7 @@ contract Reliquary is
         OTHER
     }
 
-    /// @notice Level of precision ards are calculated to
+    /// @notice Level of precision rewards are calculated to
     uint256 private constant ACC_REWARD_PRECISION = 1e12;
 
     /// @notice Nonce to use for new relicId
@@ -356,14 +356,14 @@ contract Reliquary is
 
     /*
      + @notice Modify the given pool's properties.
-     +         Can only be called by the owner.
+     +         Can only be called by an operator.
      +
      + @param pid The index of the pool. See `poolInfo`.
      + @param allocPoint New AP of the pool.
      + @param _rewarder Address of the rewarder delegate.
      + @param name Name of pool to be displayed in NFT image
-     + @param overwriteRewarder True if _rewarder should be set. Otherwise `_rewarder` is ignored.
      + @param _nftDescriptor The contract address for NFTDescriptor, which will return the token URI
+     + @param overwriteRewarder True if _rewarder should be set. Otherwise `_rewarder` is ignored.
     */
     function modifyPool(
         uint256 pid,
