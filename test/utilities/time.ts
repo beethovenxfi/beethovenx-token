@@ -29,9 +29,13 @@ export async function setAutomineBlocks(enabled: boolean) {
   return network.provider.send("evm_setAutomine", [enabled])
 }
 
-export async function increase(value: number) {
+export async function increaseTime(value: number) {
   await ethers.provider.send("evm_increaseTime", [value])
   await advanceBlock()
+}
+
+export async function getLatestBlock() {
+  return await ethers.provider.getBlock("latest")
 }
 
 export async function latest() {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
-import "../interfaces/IReliquary.sol";
+import "./IReliquaryMock.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
@@ -23,8 +23,8 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
  + increased composability without affecting accounting logic too much, and users can
  + trade their Relics without withdrawing liquidity or affecting the position's maturity.
 */
-contract Reliquary is
-    IReliquary,
+contract ReliquaryMock is
+    IReliquaryMock,
     ERC721Burnable,
     ERC721Enumerable,
     AccessControlEnumerable,
@@ -205,11 +205,16 @@ contract Reliquary is
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(IReliquary, AccessControlEnumerable, ERC721, ERC721Enumerable)
+        override(
+            IReliquaryMock,
+            AccessControlEnumerable,
+            ERC721,
+            ERC721Enumerable
+        )
         returns (bool)
     {
         return
-            interfaceId == type(IReliquary).interfaceId ||
+            interfaceId == type(IReliquaryMock).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -268,7 +273,10 @@ contract Reliquary is
         levelInfo = levels[pid];
     }
 
-    function burn(uint256 tokenId) public override(IReliquary, ERC721Burnable) {
+    function burn(uint256 tokenId)
+        public
+        override(IReliquaryMock, ERC721Burnable)
+    {
         require(positionForId[tokenId].amount == 0, "contains deposit");
         require(pendingReward(tokenId) == 0, "contains pending rewards");
         super.burn(tokenId);
@@ -365,75 +373,75 @@ contract Reliquary is
      + @param _nftDescriptor The contract address for NFTDescriptor, which will return the token URI
      + @param overwriteRewarder True if _rewarder should be set. Otherwise `_rewarder` is ignored.
     */
-    function modifyPool(
-        uint256 pid,
-        uint256 allocPoint,
-        IReliquaryRewarder _rewarder,
-        string calldata name,
-        INFTDescriptor _nftDescriptor,
-        bool overwriteRewarder
-    ) external override onlyRole(OPERATOR) {
-        require(pid < poolInfo.length, "set: pool does not exist");
+    // function modifyPool(
+    //     uint256 pid,
+    //     uint256 allocPoint,
+    //     IReliquaryRewarder _rewarder,
+    //     string calldata name,
+    //     INFTDescriptor _nftDescriptor,
+    //     bool overwriteRewarder
+    // ) external override onlyRole(OPERATOR) {
+    //     require(pid < poolInfo.length, "set: pool does not exist");
 
-        uint256 length = poolLength();
-        for (uint256 i; i < length; i = _uncheckedInc(i)) {
-            _updatePool(i);
-        }
+    //     uint256 length = poolLength();
+    //     for (uint256 i; i < length; i = _uncheckedInc(i)) {
+    //         _updatePool(i);
+    //     }
 
-        PoolInfo storage pool = poolInfo[pid];
-        uint256 totalAlloc = totalAllocPoint + allocPoint - pool.allocPoint;
-        require(totalAlloc != 0, "totalAllocPoint cannot be 0");
-        totalAllocPoint = totalAlloc;
-        pool.allocPoint = allocPoint;
+    //     PoolInfo storage pool = poolInfo[pid];
+    //     uint256 totalAlloc = totalAllocPoint + allocPoint - pool.allocPoint;
+    //     require(totalAlloc != 0, "totalAllocPoint cannot be 0");
+    //     totalAllocPoint = totalAlloc;
+    //     pool.allocPoint = allocPoint;
 
-        if (overwriteRewarder) {
-            rewarder[pid] = _rewarder;
-        }
+    //     if (overwriteRewarder) {
+    //         rewarder[pid] = _rewarder;
+    //     }
 
-        pool.name = name;
-        nftDescriptor[pid] = _nftDescriptor;
+    //     pool.name = name;
+    //     nftDescriptor[pid] = _nftDescriptor;
 
-        emit LogPoolModified(
-            pid,
-            allocPoint,
-            overwriteRewarder ? _rewarder : rewarder[pid],
-            _nftDescriptor
-        );
-    }
+    //     emit LogPoolModified(
+    //         pid,
+    //         allocPoint,
+    //         overwriteRewarder ? _rewarder : rewarder[pid],
+    //         _nftDescriptor
+    //     );
+    // }
 
     /*
      + @notice Allows an address with the MATURITY_MODIFIER role to modify a position's maturity within set limits.
      + @param relicId The NFT ID of the position being modified.
      + @param points Number of seconds to reduce the position's entry by (increasing maturity), before maximum.
      + @return receivedBonus Actual maturity bonus received after maximum.
-    */
-    function modifyMaturity(uint256 relicId, uint256 points)
-        external
-        override
-        onlyRole(MATURITY_MODIFIER)
-        returns (uint256 receivedBonus)
-    {
-        receivedBonus = Math.max(1 days, points);
-        PositionInfo storage position = positionForId[relicId];
-        position.entry -= receivedBonus;
-        _updatePosition(0, relicId, Kind.OTHER, address(0));
+    // */
+    // function modifyMaturity(uint256 relicId, uint256 points)
+    //     external
+    //     override
+    //     onlyRole(MATURITY_MODIFIER)
+    //     returns (uint256 receivedBonus)
+    // {
+    //     receivedBonus = Math.max(1 days, points);
+    //     PositionInfo storage position = positionForId[relicId];
+    //     position.entry -= receivedBonus;
+    //     _updatePosition(0, relicId, Kind.OTHER, address(0));
 
-        emit MaturityBonus(
-            position.poolId,
-            ownerOf(relicId),
-            relicId,
-            receivedBonus
-        );
-    }
+    //     emit MaturityBonus(
+    //         position.poolId,
+    //         ownerOf(relicId),
+    //         relicId,
+    //         receivedBonus
+    //     );
+    // }
 
-    function updateLastMaturityBonus(uint256 relicId)
-        external
-        override
-        onlyRole(MATURITY_MODIFIER)
-    {
-        PositionInfo storage position = positionForId[relicId];
-        position.lastMaturityBonus = block.timestamp;
-    }
+    // function updateLastMaturityBonus(uint256 relicId)
+    //     external
+    //     override
+    //     onlyRole(MATURITY_MODIFIER)
+    // {
+    //     PositionInfo storage position = positionForId[relicId];
+    //     position.lastMaturityBonus = block.timestamp;
+    // }
 
     /*
      + @notice View function to see pending reward tokens on frontend.

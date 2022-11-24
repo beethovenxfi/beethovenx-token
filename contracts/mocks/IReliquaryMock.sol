@@ -4,9 +4,9 @@ pragma solidity ^0.8.15;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
-import "./IEmissionCurve.sol";
-import "./INFTDescriptor.sol";
-import "./IReliquaryRewarder.sol";
+import "../interfaces/IEmissionCurve.sol";
+import "../interfaces/INFTDescriptor.sol";
+import "../interfaces/IReliquaryRewarder.sol";
 
 /*
  + @notice Info for each Reliquary position.
@@ -68,7 +68,7 @@ struct PendingReward {
     uint256 pendingReward;
 }
 
-interface IReliquary is IERC721Enumerable {
+interface IReliquaryMock is IERC721Enumerable {
     function burn(uint256 tokenId) external;
 
     function setEmissionCurve(IEmissionCurve _emissionCurve) external;
@@ -85,20 +85,20 @@ interface IReliquary is IERC721Enumerable {
         INFTDescriptor _nftDescriptor
     ) external;
 
-    function modifyPool(
-        uint256 pid,
-        uint256 allocPoint,
-        IReliquaryRewarder _rewarder,
-        string calldata name,
-        INFTDescriptor _nftDescriptor,
-        bool overwriteRewarder
-    ) external;
+    // function modifyPool(
+    //     uint256 pid,
+    //     uint256 allocPoint,
+    //     IReliquaryRewarder _rewarder,
+    //     string calldata name,
+    //     INFTDescriptor _nftDescriptor,
+    //     bool overwriteRewarder
+    // ) external;
 
-    function modifyMaturity(uint256 relicId, uint256 points)
-        external
-        returns (uint256 receivedBonus);
+    // function modifyMaturity(uint256 relicId, uint256 points)
+    //     external
+    //     returns (uint256 receivedBonus);
 
-    function updateLastMaturityBonus(uint256 relicId) external;
+    // function updateLastMaturityBonus(uint256 relicId) external;
 
     function pendingReward(uint256 relicId)
         external
