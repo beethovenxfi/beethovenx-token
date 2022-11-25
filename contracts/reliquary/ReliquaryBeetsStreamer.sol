@@ -5,10 +5,10 @@ pragma solidity 0.8.15;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "../token/BeethovenxMasterChef.sol";
 import "./BeetsConstantEmissionCurve.sol";
 import "../interfaces/IReliquary.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
 import "hardhat/console.sol";
 
@@ -21,7 +21,7 @@ import "hardhat/console.sol";
 
 contract ReliquaryBeetsStreamer is
     ERC20("ReliquaryStreamerBPT", "rqBPT"),
-    Ownable
+    AccessControl
 {
     uint256 public constant MAX_SUPPLY = 10; // 10 tokens only
 
@@ -33,24 +33,28 @@ contract ReliquaryBeetsStreamer is
 
     uint256 public lastTransferTimestamp = 0;
 
-    uint256 private immutable secondsIn7Days = 604800;
+    /// @notice Access control roles.
+    bytes32 public constant OPERATOR = keccak256("OPERATOR");
 
     constructor(
         BeethovenxMasterChef _masterchef,
         uint256 _masterchefPoolId,
         IReliquary _reliquary,
         ERC20 _beets,
-        address _emergencyHarvestTarget
+        address _emergencyHarvestTarget,
+        address admin
     ) {
         masterchef = _masterchef;
         masterchefPoolId = _masterchefPoolId;
         reliquary = _reliquary;
         beets = _beets;
         emergencyHarvestTarget = _emergencyHarvestTarget;
+        _setupRole(DEFAULT_ADMIN_ROLE, admin);
+        _setupRole(OPERATOR, admin);
     }
 
     // mints one BPT and deposits it into the masterchef
-    function deposit() external onlyOwner {
+    function deposit() external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(
             totalSupply() + 1 <= MAX_SUPPLY,
             "rqBPT::mint: cannot exceed max supply"
@@ -60,11 +64,14 @@ contract ReliquaryBeetsStreamer is
         masterchef.deposit(masterchefPoolId, 1, address(this));
     }
 
-    function startNewEpoch() external onlyOwner {
+    function startNewEpoch() external onlyRole(OPERATOR) {
+        require(lastTransferTimestamp != 0, "Must be initialized");
         // harvest and send the beets to the reliquary
-        masterchef.harvest(masterchefPoolId, address(this));
-        uint256 beetsHarvested = beets.balanceOf(address(this));
-        beets.transfer(address(reliquary), beetsHarvested);
+        uint256 beetsHarvested = masterchef.pendingBeets(
+            masterchefPoolId,
+            address(this)
+        );
+        masterchef.harvest(masterchefPoolId, address(reliquary));
 
         // calculate new emission rate based on emission rate from masterchef
         uint256 secondsSinceLastHarvest = block.timestamp -
@@ -74,17 +81,25 @@ contract ReliquaryBeetsStreamer is
             address(reliquary.emissionCurve())
         );
 
-        if (lastTransferTimestamp == 0) {
-            secondsSinceLastHarvest = secondsIn7Days;
-        }
-
         uint256 newBeetsPerSecond = beetsHarvested / secondsSinceLastHarvest;
+        require(
+            newBeetsPerSecond <= 1e18,
+            "New rate is above 1 beets per second"
+        );
         curve.setRate(newBeetsPerSecond);
 
         lastTransferTimestamp = block.timestamp;
     }
 
-    function emergencyHarvest() external onlyOwner {
+    function initialize(uint256 emissionStartTimestamp)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        require(lastTransferTimestamp == 0, "Already initialized");
+        lastTransferTimestamp = emissionStartTimestamp;
+    }
+
+    function emergencyHarvest() external onlyRole(DEFAULT_ADMIN_ROLE) {
         masterchef.harvest(masterchefPoolId, emergencyHarvestTarget);
     }
 }

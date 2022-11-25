@@ -16,7 +16,6 @@ contract BeetsConstantEmissionCurve is IEmissionCurve, AccessControl {
     constructor(uint256 _rewardPerSecond) {
         rewardPerSecond = _rewardPerSecond;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(OPERATOR, msg.sender);
     }
 
     function getRate(uint256 lastRewardTime)

@@ -55,7 +55,6 @@ describe("ReliquaryBeetsStreamer", function () {
   beforeEach(async function () {
     beets = await deployContract("BeethovenxToken", [])
     poolToken = await deployContract("ERC20", ["PoolTestToken", "PTT"])
-    // 0x04068da6c83afcfa0e13ba15a6696662335d5b75,0x21be370d5312f44cb42ce377bc9b8a0cef1a4c83,0xde1e704dae0b4051e80dabb26ab6ad6c12262da0,0x10010078a54396f62c96df8532dc2b4847d47ed3,0xf24bcf4d1e507740041c9cfd2dddb29585adce1e,0x74b23882a30290451A17c44f4F05243b6b58C76d,0xde5ed76e7c05ec5e4572cfc88d1acea165109e44,0x91fa20244Fb509e8289CA630E5db3E9166233FDc,0x10b620b2dbac4faa7d7ffd71da486f5d44cd86f9,0x5ddb92a5340fd0ead3987d3661afcd6104c3b757,0xc0064b291bd3d4ba0e44ccfc81bf8e7f7a579cd2
     masterchef = await deployChef(beets.address, treasury.address, masterchefRate, 0)
     await beets.mint(owner.address, bn(100_000_000))
     await beets.transferOwnership(masterchef.address)
@@ -72,26 +71,35 @@ describe("ReliquaryBeetsStreamer", function () {
 
     // there are no pools on the mastechef, so the pool id is 0
     const poolId = 0
-    streamer = await deployContract("ReliquaryBeetsStreamer", [masterchef.address, poolId, reliquary.address, beets.address, alice.address])
+    streamer = await deployContract("ReliquaryBeetsStreamer", [
+      masterchef.address,
+      poolId,
+      reliquary.address,
+      beets.address,
+      alice.address,
+      owner.address,
+    ])
 
     await curve.grantRole(await curve.OPERATOR(), streamer.address)
     await masterchef.add(10, streamer.address, ethers.constants.AddressZero)
   })
 
   it("deposit the streamer bpt into the farm", async () => {
-    await streamer.deposit()
+    const depositTxn = await streamer.deposit()
+    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
 
     const userInfo = await masterchef.userInfo(0, streamer.address)
     expect(userInfo.amount).to.be.equal(1)
   })
 
   it("harvest pending rewards to reliquary", async () => {
-    const txn = await streamer.deposit()
+    const depositTxn = await streamer.deposit()
+    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
 
     expect(await beets.balanceOf(streamer.address)).to.be.equal(0)
     expect(await beets.balanceOf(reliquary.address)).to.be.equal(0)
 
-    await advanceBlockTo(txn.blockNumber! + 100)
+    await advanceBlockTo(depositTxn.blockNumber! + 100)
 
     await streamer.startNewEpoch()
 
@@ -99,13 +107,15 @@ describe("ReliquaryBeetsStreamer", function () {
     expect(await beets.balanceOf(reliquary.address)).to.be.equal(bn(1).mul(101).mul(lpPercentage).div(1000))
   })
 
-  it("only owner can call streamer", async () => {
-    await expect(streamer.connect(alice).deposit()).to.be.revertedWith("Ownable: caller is not the owner")
-    await expect(streamer.connect(bob).startNewEpoch()).to.be.revertedWith("Ownable: caller is not the owner")
+  it("owner can call streamer", async () => {
+    await expect(streamer.connect(alice).deposit()).to.be.revertedWith("AccessControl")
+    await expect(streamer.connect(bob).startNewEpoch()).to.be.revertedWith("AccessControl")
   })
 
   it("start the first epoch", async () => {
-    await streamer.deposit()
+    const depositTxn = await streamer.deposit()
+    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
+
     // init done
 
     // there is one week of no emissions to front-load reliquary
@@ -113,7 +123,7 @@ describe("ReliquaryBeetsStreamer", function () {
     const sevenDaysInSeconds = moment.duration(7, "days").asSeconds()
 
     // the last block of the week will be mined when streamer.startNewEpoch() is called
-    await mine(sevenDaysInSeconds - 1)
+    await mine(sevenDaysInSeconds - 2)
 
     // the streamer has now 1 week worth of beets (at the rate of 1beets/block) to harvest and transfer
     const newEpochTxn = await streamer.startNewEpoch()
@@ -133,7 +143,8 @@ describe("ReliquaryBeetsStreamer", function () {
   })
 
   it("start an epoch before the last is finished", async () => {
-    await streamer.deposit()
+    const depositTxn = await streamer.deposit()
+    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
     // init done
 
     // let one week pass and start the first epoch
@@ -166,7 +177,8 @@ describe("ReliquaryBeetsStreamer", function () {
 
   it("lower emission rate on the masterchef", async () => {
     const lowerRate = bn(75, 16)
-    await streamer.deposit()
+    const depositTxn = await streamer.deposit()
+    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
     // init done
 
     // let one week pass and start the first epoch
@@ -202,7 +214,8 @@ describe("ReliquaryBeetsStreamer", function () {
 
   it("lower emission rate on the masterchef mid epoch", async () => {
     const lowerRate = bn(75, 16)
-    await streamer.deposit()
+    const depositTxn = await streamer.deposit()
+    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
     // init done
 
     // let one week pass and start the first epoch
@@ -213,8 +226,6 @@ describe("ReliquaryBeetsStreamer", function () {
 
     // the streamer has now 1 week worth of beets (at the rate of 1beets/block) to harvest and transfer
     await streamer.startNewEpoch()
-
-    const firstEpochBeetsOnReliquary = await beets.balanceOf(reliquary.address)
 
     // let 6 days and 12 hours pass
     const sixDaysAnd12HoursInSeconds = moment.duration(7, "days").subtract(12, "hours").asSeconds()
@@ -260,5 +271,32 @@ describe("ReliquaryBeetsStreamer", function () {
 
     // no beets on the streamer, all should be sent to alice
     expect(await beets.balanceOf(streamer.address)).to.be.equal(0)
+  })
+
+  it("need to initialize before starting an epoch", async () => {
+    await streamer.deposit()
+    // init done
+
+    // let one week pass and start the first epoch
+    const sevenDaysInSeconds = moment.duration(7, "days").asSeconds()
+
+    // let an epoch pass
+    await mine(sevenDaysInSeconds - 1)
+
+    await expect(streamer.startNewEpoch()).to.be.revertedWith("Must be initialized")
+  })
+
+  it("can only initialize once", async () => {
+    const depositTxn = await streamer.deposit()
+    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
+    // init done
+
+    // let one week pass and start the first epoch
+    const sevenDaysInSeconds = moment.duration(7, "days").asSeconds()
+
+    // let an epoch pass
+    await mine(sevenDaysInSeconds - 1)
+
+    await expect(streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))).to.be.revertedWith("Already initialized")
   })
 })
