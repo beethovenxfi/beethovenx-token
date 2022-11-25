@@ -1,6 +1,6 @@
 import { ethers } from "hardhat"
 import { expect } from "chai"
-import { encodeParameters, latest, duration, increase, deployContract } from "./utilities"
+import { encodeParameters, latest, duration, increaseTime, deployContract } from "./utilities"
 import { BeethovenxToken, Timelock } from "../types"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 
@@ -54,13 +54,13 @@ describe("Timelock", function () {
     await timelock
       .connect(bob)
       .queueTransaction(beets.address, "0", "transferOwnership(address)", encodeParameters(["address"], [carol.address]), eta)
-    await increase(duration.days("1").toNumber())
+    await increaseTime(duration.days("1").toNumber())
     await expect(
       timelock
         .connect(bob)
         .executeTransaction(beets.address, "0", "transferOwnership(address)", encodeParameters(["address"], [carol.address]), eta)
     ).to.be.revertedWith("Timelock::executeTransaction: Transaction hasn't surpassed time lock.")
-    await increase(duration.days("4").toNumber())
+    await increaseTime(duration.days("4").toNumber())
     await timelock
       .connect(bob)
       .executeTransaction(beets.address, "0", "transferOwnership(address)", encodeParameters(["address"], [carol.address]), eta)
@@ -73,7 +73,7 @@ describe("Timelock", function () {
     await timelock
       .connect(bob)
       .queueTransaction(beets.address, "0", "transferOwnership(address)", encodeParameters(["address"], [carol.address]), eta)
-    await increase(duration.days("1").toNumber())
+    await increaseTime(duration.days("1").toNumber())
     await timelock
       .connect(bob)
       .cancelTransaction(beets.address, "0", "transferOwnership(address)", encodeParameters(["address"], [carol.address]), eta)
@@ -102,7 +102,7 @@ describe("Timelock", function () {
     await timelock
       .connect(carol)
       .queueTransaction(timelock.address, "0", "setPendingAdmin(address)", encodeParameters(["address"], [alice.address]), eta)
-    await increase(duration.days("4").toNumber())
+    await increaseTime(duration.days("4").toNumber())
     await timelock
       .connect(carol)
       .executeTransaction(timelock.address, "0", "setPendingAdmin(address)", encodeParameters(["address"], [alice.address]), eta)
