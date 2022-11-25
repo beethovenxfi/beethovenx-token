@@ -283,7 +283,7 @@ describe("ReliquaryBeetsStreamer", function () {
     // let an epoch pass
     await mine(sevenDaysInSeconds - 1)
 
-    await expect(streamer.startNewEpoch()).to.be.revertedWith("Must be initialized")
+    await expect(streamer.testRequire()).to.be.revertedWith("Must be initialized")
   })
 
   it("can only initialize once", async () => {

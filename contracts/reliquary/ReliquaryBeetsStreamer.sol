@@ -91,12 +91,38 @@ contract ReliquaryBeetsStreamer is
         lastTransferTimestamp = block.timestamp;
     }
 
-    function initialize(uint256 emissionStartTimestamp)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function initialize(
+        uint256 emissionStartTimestamp
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(lastTransferTimestamp == 0, "Already initialized");
         lastTransferTimestamp = emissionStartTimestamp;
+    }
+
+    function testRequire() external onlyRole(OPERATOR) {
+        // require(false, "Must be initialized");
+        require(lastTransferTimestamp != 0, "Must be initialized");
+        uint256 beetsHarvested = masterchef.pendingBeets(
+            masterchefPoolId,
+            address(this)
+        );
+        masterchef.harvest(masterchefPoolId, address(reliquary));
+
+        // calculate new emission rate based on emission rate from masterchef
+        uint256 secondsSinceLastHarvest = block.timestamp -
+            lastTransferTimestamp;
+
+        BeetsConstantEmissionCurve curve = BeetsConstantEmissionCurve(
+            address(reliquary.emissionCurve())
+        );
+
+        uint256 newBeetsPerSecond = beetsHarvested / secondsSinceLastHarvest;
+        require(
+            newBeetsPerSecond <= 1e18,
+            "New rate is above 1 beets per second"
+        );
+        curve.setRate(newBeetsPerSecond);
+
+        lastTransferTimestamp = block.timestamp;
     }
 
     function emergencyHarvest() external onlyRole(DEFAULT_ADMIN_ROLE) {
