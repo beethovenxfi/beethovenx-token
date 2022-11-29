@@ -155,11 +155,11 @@ interface IReliquaryMock is IERC721Enumerable {
         address to
     ) external returns (uint256 newId);
 
-    function shift(
-        uint256 fromId,
-        uint256 toId,
-        uint256 amount
-    ) external;
+    // function shift(
+    //     uint256 fromId,
+    //     uint256 toId,
+    //     uint256 amount
+    // ) external;
 
     function merge(uint256 fromId, uint256 toId) external;
 

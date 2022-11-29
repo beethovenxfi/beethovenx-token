@@ -818,7 +818,7 @@ contract ReliquaryMock is
                 rewardToken.safeTransfer(harvestTo, received);
                 IReliquaryRewarder _rewarder = rewarder[poolId];
                 if (address(_rewarder) != address(0)) {
-                    _rewarder.onReward(relicId, received, harvestTo);
+                    // _rewarder.onReward(relicId, received, harvestTo);
                 }
             }
         }
@@ -826,12 +826,12 @@ contract ReliquaryMock is
         if (kind == Kind.DEPOSIT) {
             IReliquaryRewarder _rewarder = rewarder[poolId];
             if (address(_rewarder) != address(0)) {
-                _rewarder.onDeposit(relicId, amount);
+                // _rewarder.onDeposit(relicId, amount);
             }
         } else if (kind == Kind.WITHDRAW) {
             IReliquaryRewarder _rewarder = rewarder[poolId];
             if (address(_rewarder) != address(0)) {
-                _rewarder.onWithdraw(relicId, amount);
+                // _rewarder.onWithdraw(relicId, amount);
             }
         }
     }
@@ -882,80 +882,80 @@ contract ReliquaryMock is
         emit Split(fromId, newId, amount);
     }
 
-    /// @notice Transfer amount from one Relic into another, updating maturity in the receiving Relic
-    /// @param fromId The NFT ID of the Relic to transfer from
-    /// @param toId The NFT ID of the Relic being transferred to
-    /// @param amount The amount being transferred
-    function shift(
-        uint256 fromId,
-        uint256 toId,
-        uint256 amount
-    ) external override nonReentrant {
-        require(amount != 0, "cannot shift zero amount");
-        require(fromId != toId, "cannot shift into same Relic");
-        _requireApprovedOrOwner(fromId);
-        _requireApprovedOrOwner(toId);
+    // /// @notice Transfer amount from one Relic into another, updating maturity in the receiving Relic
+    // /// @param fromId The NFT ID of the Relic to transfer from
+    // /// @param toId The NFT ID of the Relic being transferred to
+    // /// @param amount The amount being transferred
+    // function shift(
+    //     uint256 fromId,
+    //     uint256 toId,
+    //     uint256 amount
+    // ) external override nonReentrant {
+    //     require(amount != 0, "cannot shift zero amount");
+    //     require(fromId != toId, "cannot shift into same Relic");
+    //     _requireApprovedOrOwner(fromId);
+    //     _requireApprovedOrOwner(toId);
 
-        PositionInfo storage fromPosition = positionForId[fromId];
-        uint256 fromAmount = fromPosition.amount;
-        require(amount <= fromAmount, "amount exceeds deposited");
+    //     PositionInfo storage fromPosition = positionForId[fromId];
+    //     uint256 fromAmount = fromPosition.amount;
+    //     require(amount <= fromAmount, "amount exceeds deposited");
 
-        uint256 poolId = fromPosition.poolId;
-        PositionInfo storage toPosition = positionForId[toId];
-        require(poolId == toPosition.poolId, "Relics not of the same pool");
+    //     uint256 poolId = fromPosition.poolId;
+    //     PositionInfo storage toPosition = positionForId[toId];
+    //     require(poolId == toPosition.poolId, "Relics not of the same pool");
 
-        uint256 toAmount = toPosition.amount;
-        toPosition.entry =
-            (fromAmount * fromPosition.entry + toAmount * toPosition.entry) /
-            (fromAmount + toAmount);
+    //     uint256 toAmount = toPosition.amount;
+    //     toPosition.entry =
+    //         (fromAmount * fromPosition.entry + toAmount * toPosition.entry) /
+    //         (fromAmount + toAmount);
 
-        uint256 newFromAmount = fromAmount - amount;
-        fromPosition.amount = newFromAmount;
+    //     uint256 newFromAmount = fromAmount - amount;
+    //     fromPosition.amount = newFromAmount;
 
-        uint256 newToAmount = toAmount + amount;
-        toPosition.amount = newToAmount;
+    //     uint256 newToAmount = toAmount + amount;
+    //     toPosition.amount = newToAmount;
 
-        (
-            uint256 fromLevel,
-            uint256 oldToLevel,
-            uint256 newToLevel
-        ) = _shiftLevelBalances(
-                fromId,
-                toId,
-                poolId,
-                amount,
-                toAmount,
-                newToAmount
-            );
+    //     (
+    //         uint256 fromLevel,
+    //         uint256 oldToLevel,
+    //         uint256 newToLevel
+    //     ) = _shiftLevelBalances(
+    //             fromId,
+    //             toId,
+    //             poolId,
+    //             amount,
+    //             toAmount,
+    //             newToAmount
+    //         );
 
-        uint256 accRewardPerShare = _updatePool(poolId);
-        uint256 fromMultiplier = accRewardPerShare *
-            levels[poolId].allocPoint[fromLevel];
-        uint256 pendingFrom = (fromAmount * fromMultiplier) /
-            ACC_REWARD_PRECISION -
-            fromPosition.rewardDebt;
-        if (pendingFrom != 0) {
-            fromPosition.rewardCredit += pendingFrom;
-        }
-        uint256 pendingTo = (toAmount *
-            levels[poolId].allocPoint[oldToLevel] *
-            accRewardPerShare) /
-            ACC_REWARD_PRECISION -
-            toPosition.rewardDebt;
-        if (pendingTo != 0) {
-            toPosition.rewardCredit += pendingTo;
-        }
-        fromPosition.rewardDebt =
-            (newFromAmount * fromMultiplier) /
-            ACC_REWARD_PRECISION;
-        toPosition.rewardDebt =
-            (newToAmount *
-                accRewardPerShare *
-                levels[poolId].allocPoint[newToLevel]) /
-            ACC_REWARD_PRECISION;
+    //     uint256 accRewardPerShare = _updatePool(poolId);
+    //     uint256 fromMultiplier = accRewardPerShare *
+    //         levels[poolId].allocPoint[fromLevel];
+    //     uint256 pendingFrom = (fromAmount * fromMultiplier) /
+    //         ACC_REWARD_PRECISION -
+    //         fromPosition.rewardDebt;
+    //     if (pendingFrom != 0) {
+    //         fromPosition.rewardCredit += pendingFrom;
+    //     }
+    //     uint256 pendingTo = (toAmount *
+    //         levels[poolId].allocPoint[oldToLevel] *
+    //         accRewardPerShare) /
+    //         ACC_REWARD_PRECISION -
+    //         toPosition.rewardDebt;
+    //     if (pendingTo != 0) {
+    //         toPosition.rewardCredit += pendingTo;
+    //     }
+    //     fromPosition.rewardDebt =
+    //         (newFromAmount * fromMultiplier) /
+    //         ACC_REWARD_PRECISION;
+    //     toPosition.rewardDebt =
+    //         (newToAmount *
+    //             accRewardPerShare *
+    //             levels[poolId].allocPoint[newToLevel]) /
+    //         ACC_REWARD_PRECISION;
 
-        emit Shift(fromId, toId, amount);
-    }
+    //     emit Shift(fromId, toId, amount);
+    // }
 
     /// @notice Transfer entire position (including rewards) from one Relic into another, burning it
     /// and updating maturity in the receiving Relic

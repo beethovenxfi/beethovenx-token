@@ -10,8 +10,6 @@ import "./BeetsConstantEmissionCurve.sol";
 import "../interfaces/IReliquary.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-import "hardhat/console.sol";
-
 /**
  *
  * This helper will harvest all beets to reliquary and based on the beets available adjust the beets/s on reliquary.
