@@ -64,7 +64,6 @@ describe("ReliquaryBeetsStreamer", function () {
     reliquary = await deployContract("ReliquaryMock", [beets.address, curve.address])
 
     let utf8Encode = new TextEncoder()
-
     await reliquary.grantRole(keccak256(utf8Encode.encode("OPERATOR")), owner.address)
 
     reliquary.addPool(100, poolToken.address, ADDRESS_ZERO, requiredMaturity, allocationPoints, "fBeets", ADDRESS_ZERO)
@@ -85,34 +84,17 @@ describe("ReliquaryBeetsStreamer", function () {
   })
 
   it("deposit the streamer bpt into the farm", async () => {
-    const depositTxn = await streamer.deposit()
-    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
-
+    await streamer.deposit()
     const userInfo = await masterchef.userInfo(0, streamer.address)
     expect(userInfo.amount).to.be.equal(1)
   })
 
-  it("harvest pending rewards to reliquary", async () => {
-    const depositTxn = await streamer.deposit()
-    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
-
-    expect(await beets.balanceOf(streamer.address)).to.be.equal(0)
-    expect(await beets.balanceOf(reliquary.address)).to.be.equal(0)
-
-    await advanceBlockTo(depositTxn.blockNumber! + 100)
-
-    await streamer.startNewEpoch()
-
-    expect(await beets.balanceOf(streamer.address)).to.be.equal(0)
-    expect(await beets.balanceOf(reliquary.address)).to.be.equal(bn(1).mul(101).mul(lpPercentage).div(1000))
-  })
-
-  it("owner can call streamer", async () => {
+  it("only operator and admin can call streamer", async () => {
     await expect(streamer.connect(alice).deposit()).to.be.revertedWith("AccessControl")
     await expect(streamer.connect(bob).startNewEpoch()).to.be.revertedWith("AccessControl")
   })
 
-  it("start the first epoch", async () => {
+  it("set the rate correctly after starting the first epoch", async () => {
     const depositTxn = await streamer.deposit()
     await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
 
@@ -298,5 +280,35 @@ describe("ReliquaryBeetsStreamer", function () {
     await mine(sevenDaysInSeconds - 1)
 
     await expect(streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))).to.be.revertedWith("Already initialized")
+  })
+
+  it("start a new epoch right after one is started and only harvest tiny amount", async () => {
+    const depositTxn = await streamer.deposit()
+    await streamer.initialize(await getBlockTime(depositTxn.blockHash || ""))
+    // init done
+
+    // let one week pass and start the first epoch
+    const sevenDaysInSeconds = moment.duration(7, "days").asSeconds()
+
+    // the last block of the week will be mined when streamer.startNewEpoch() is called
+    await mine(sevenDaysInSeconds - 1)
+
+    // the streamer has now 1 week worth of beets (at the rate of 1beets/block) to harvest and transfer
+    const firstStartTxn = await streamer.startNewEpoch()
+    const lastTransferTimestamp = await streamer.lastTransferTimestamp()
+    //start a new epoch right after
+    // await mine(10)
+    const pendingBeets = await masterchef.pendingBeets(0, streamer.address)
+    const secondStartTxn = await streamer.startNewEpoch()
+    const transferTimestamp = await streamer.lastTransferTimestamp()
+
+    expect(await getBlockTime(firstStartTxn.blockHash || "")).to.be.equal(lastTransferTimestamp)
+    expect(await getBlockTime(secondStartTxn.blockHash || "")).to.be.equal(transferTimestamp)
+
+    // rate should still be the same
+    expect(await curve.getRate(0)).to.be.equal(masterchefRate.mul(lpPercentage).div(1000))
+    expect(await curve.getRate(0)).to.be.equal(
+      pendingBeets.add(masterchefRate.mul(lpPercentage).div(1000)).div(transferTimestamp.sub(lastTransferTimestamp))
+    )
   })
 })
