@@ -34,6 +34,7 @@ async function reliquary() {
         "pendingRewardsByRelicId",
         "pendingRewardsOfOwner",
         "relicPositionsOfOwner",
+        "get position of relic",
       ],
     },
   ])
@@ -376,6 +377,15 @@ async function reliquary() {
       accRewardsPerShaer: ${poolInfo.accRewardPerShare}
       lastRewardTime: ${poolInfo.lastRewardTime}`)
       break
+    }
+    case "get position of relic": {
+      const relicIdAnswers = await inquirer.prompt([{ name: "relicId", message: "relic ID", type: "input" }])
+      const position = await contract.getPositionForId(relicIdAnswers.relicId)
+      console.log(
+        `Relic ${relicIdAnswers.relicId} > pid ${position.poolId.toString()} > amount: ${formatUnits(position.amount)} > level ${
+          position.level
+        } > entry ${position.entry}`
+      )
     }
   }
 }
