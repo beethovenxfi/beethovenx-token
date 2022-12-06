@@ -3,7 +3,7 @@ import { formatUnits, parseUnits } from "ethers/lib/utils"
 import { ethers } from "hardhat"
 import inquirer from "inquirer"
 import { ADDRESS_ZERO, bn } from "../test/utilities"
-import { ERC20, Reliquary } from "../types"
+import { ERC20, IReliquary } from "../types"
 
 async function reliquary() {
   const contractAnswer = await inquirer.prompt([
@@ -14,7 +14,7 @@ async function reliquary() {
       default: "0xb0FC43069089d0fA02baAa896ac2eFcb596D7D05",
     },
   ])
-  const contract: Reliquary = (await ethers.getContractAt("Reliquary", contractAnswer.contractAddress)) as Reliquary
+  const contract: IReliquary = (await ethers.getContractAt("IReliquary", contractAnswer.contractAddress)) as IReliquary
 
   const actionAnswer = await inquirer.prompt([
     {
