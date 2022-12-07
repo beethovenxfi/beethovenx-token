@@ -1,7 +1,7 @@
 import { expect } from "chai"
-import { ADDRESS_ZERO, advanceBlockTo, bn, deployChef, deployContract, getBlockTime } from "./utilities"
+import { ADDRESS_ZERO, bn, deployChef, deployContract, getBlockTime } from "./utilities"
 import { ethers } from "hardhat"
-import { BeethovenxMasterChef, BeethovenxToken, BeetsConstantEmissionCurve, ERC20, ReliquaryMock, ReliquaryBeetsStreamer } from "../types"
+import { BeethovenxMasterChef, BeethovenxToken, BeetsConstantEmissionCurve, ERC20, IReliquaryGamified, ReliquaryBeetsStreamer } from "../types"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 import { keccak256 } from "ethers/lib/utils"
 import moment from "moment"
@@ -10,7 +10,7 @@ import { mine } from "@nomicfoundation/hardhat-network-helpers"
 describe("ReliquaryBeetsStreamer", function () {
   let beets: BeethovenxToken
   let curve: BeetsConstantEmissionCurve
-  let reliquary: ReliquaryMock
+  let reliquary: IReliquaryGamified
   let poolToken: ERC20
   let owner: SignerWithAddress
   let dev: SignerWithAddress
@@ -61,7 +61,7 @@ describe("ReliquaryBeetsStreamer", function () {
 
     curve = await deployContract("BeetsConstantEmissionCurve", [bn(0)])
 
-    reliquary = await deployContract("ReliquaryMock", [beets.address, curve.address])
+    reliquary = await deployContract("ReliquaryGamifiedMock", [beets.address, curve.address])
 
     let utf8Encode = new TextEncoder()
     await reliquary.grantRole(keccak256(utf8Encode.encode("OPERATOR")), owner.address)

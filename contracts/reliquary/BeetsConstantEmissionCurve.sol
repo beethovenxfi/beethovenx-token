@@ -6,7 +6,7 @@ import "../interfaces/IEmissionCurve.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract BeetsConstantEmissionCurve is IEmissionCurve, AccessControl {
-    event EmissionUpdate(uint256 rewardsPerSecond);
+    event LogRate(uint256 rate);
 
     /// @notice Access control roles.
     bytes32 public constant OPERATOR = keccak256("OPERATOR");
@@ -18,17 +18,12 @@ contract BeetsConstantEmissionCurve is IEmissionCurve, AccessControl {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    function getRate(uint256 lastRewardTime)
-        external
-        view
-        override
-        returns (uint256)
-    {
+    function getRate(uint256) external view override returns (uint256) {
         return rewardPerSecond;
     }
 
     function setRate(uint256 _rewardPerSecond) external onlyRole(OPERATOR) {
         rewardPerSecond = _rewardPerSecond;
-        emit EmissionUpdate(_rewardPerSecond);
+        emit LogRate(_rewardPerSecond);
     }
 }
