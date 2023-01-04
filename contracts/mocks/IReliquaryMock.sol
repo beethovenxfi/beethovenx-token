@@ -2,7 +2,6 @@
 pragma solidity ^0.8.15;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 /**
  * @notice Info for each Reliquary position.
@@ -14,12 +13,12 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
  * `level` Index of this position's level within the pool's array of levels.
  */
 struct PositionInfo {
-    uint256 amount;
-    uint256 rewardDebt;
-    uint256 rewardCredit;
-    uint256 entry; // position owner's relative entry into the pool.
-    uint256 poolId; // ensures that a single Relic is only used for one pool.
-    uint256 level;
+    uint amount;
+    uint rewardDebt;
+    uint rewardCredit;
+    uint entry; // position owner's relative entry into the pool.
+    uint poolId; // ensures that a single Relic is only used for one pool.
+    uint level;
 }
 
 /**
@@ -30,22 +29,25 @@ struct PositionInfo {
  * `name` Name of pool to be displayed in NFT image.
  */
 struct PoolInfo {
-    uint256 accRewardPerShare;
-    uint256 lastRewardTime;
-    uint256 allocPoint;
+    uint accRewardPerShare;
+    uint lastRewardTime;
+    uint allocPoint;
     string name;
 }
 
 /**
- * @notice Level that determines how maturity is rewarded.
- * `requiredMaturity` The minimum maturity (in seconds) required to reach this Level.
- * `allocPoint` Level's individual allocation - ratio of the total allocation.
- * `balance` Total number of tokens deposited in positions at this Level.
+ * @notice Info for each level in a pool that determines how maturity is rewarded.
+ * `requiredMaturities` The minimum maturity (in seconds) required to reach each Level.
+ * `multipliers` Multiplier for each level applied to amount of incentivized token when calculating rewards in the pool.
+ *     This is applied to both the numerator and denominator in the calculation such that the size of a user's position
+ *     is effectively considered to be the actual number of tokens times the multiplier for their level.
+ *     Also note that these multipliers do not affect the overall emission rate.
+ * `balance` Total (actual) number of tokens deposited in positions at each level.
  */
 struct LevelInfo {
-    uint256[] requiredMaturity;
-    uint256[] allocPoint;
-    uint256[] balance;
+    uint[] requiredMaturities;
+    uint[] multipliers;
+    uint[] balance;
 }
 
 /**
@@ -55,120 +57,60 @@ struct LevelInfo {
  * `pendingReward` pending reward amount for a given position.
  */
 struct PendingReward {
-    uint256 relicId;
-    uint256 poolId;
-    uint256 pendingReward;
+    uint relicId;
+    uint poolId;
+    uint pendingReward;
 }
 
 interface IReliquaryMock is IERC721Enumerable {
     function setEmissionCurve(address _emissionCurve) external;
-
     function addPool(
-        uint256 allocPoint,
+        uint allocPoint,
         address _poolToken,
         address _rewarder,
-        uint256[] calldata requiredMaturity,
-        uint256[] calldata allocPoints,
+        uint[] calldata requiredMaturity,
+        uint[] calldata allocPoints,
         string memory name,
         address _nftDescriptor
     ) external;
-
     function modifyPool(
-        uint256 pid,
-        uint256 allocPoint,
+        uint pid,
+        uint allocPoint,
         address _rewarder,
         string calldata name,
         address _nftDescriptor,
         bool overwriteRewarder
     ) external;
-
-    function massUpdatePools(uint256[] calldata pids) external;
-
-    function updatePool(uint256 pid) external;
-
-    function deposit(uint256 amount, uint256 relicId) external;
-
-    function withdraw(uint256 amount, uint256 relicId) external;
-
-    function harvest(uint256 relicId, address harvestTo) external;
-
-    function withdrawAndHarvest(
-        uint256 amount,
-        uint256 relicId,
-        address harvestTo
-    ) external;
-
-    function emergencyWithdraw(uint256 relicId) external;
-
-    function updatePosition(uint256 relicId) external;
-
-    function getPositionForId(uint256)
-        external
-        view
-        returns (PositionInfo memory);
-
-    function getPoolInfo(uint256) external view returns (PoolInfo memory);
-
-    function getLevelInfo(uint256) external view returns (LevelInfo memory);
-
-    function pendingRewardsOfOwner(address owner)
-        external
-        view
-        returns (PendingReward[] memory pendingRewards);
-
+    function massUpdatePools(uint[] calldata pids) external;
+    function updatePool(uint pid) external;
+    function deposit(uint amount, uint relicId) external;
+    function withdraw(uint amount, uint relicId) external;
+    function harvest(uint relicId, address harvestTo) external;
+    function withdrawAndHarvest(uint amount, uint relicId, address harvestTo) external;
+    function emergencyWithdraw(uint relicId) external;
+    function updatePosition(uint relicId) external;
+    function getPositionForId(uint) external view returns (PositionInfo memory);
+    function getPoolInfo(uint) external view returns (PoolInfo memory);
+    function getLevelInfo(uint) external view returns (LevelInfo memory);
+    function pendingRewardsOfOwner(address owner) external view returns (PendingReward[] memory pendingRewards);
     function relicPositionsOfOwner(address owner)
         external
         view
-        returns (
-            uint256[] memory relicIds,
-            PositionInfo[] memory positionInfos
-        );
-
-    function isApprovedOrOwner(address, uint256) external view returns (bool);
-
-    function createRelicAndDeposit(
-        address to,
-        uint256 pid,
-        uint256 amount
-    ) external returns (uint256 id);
-
-    function split(
-        uint256 relicId,
-        uint256 amount,
-        address to
-    ) external returns (uint256 newId);
-
-    function shift(
-        uint256 fromId,
-        uint256 toId,
-        uint256 amount
-    ) external;
-
-    function merge(uint256 fromId, uint256 toId) external;
-
-    function burn(uint256 tokenId) external;
-
-    function pendingReward(uint256 relicId)
-        external
-        view
-        returns (uint256 pending);
-
-    function levelOnUpdate(uint256 relicId)
-        external
-        view
-        returns (uint256 level);
-
-    function poolLength() external view returns (uint256);
+        returns (uint[] memory relicIds, PositionInfo[] memory positionInfos);
+    function isApprovedOrOwner(address, uint) external view returns (bool);
+    function createRelicAndDeposit(address to, uint pid, uint amount) external returns (uint id);
+    function split(uint relicId, uint amount, address to) external returns (uint newId);
+    function shift(uint fromId, uint toId, uint amount) external;
+    function merge(uint fromId, uint toId) external;
+    function burn(uint tokenId) external;
+    function pendingReward(uint relicId) external view returns (uint pending);
+    function levelOnUpdate(uint relicId) external view returns (uint level);
+    function poolLength() external view returns (uint);
 
     function rewardToken() external view returns (address);
-
-    function nftDescriptor(uint256) external view returns (address);
-
+    function nftDescriptor(uint) external view returns (address);
     function emissionCurve() external view returns (address);
-
-    function poolToken(uint256) external view returns (address);
-
-    function rewarder(uint256) external view returns (address);
-
-    function totalAllocPoint() external view returns (uint256);
+    function poolToken(uint) external view returns (address);
+    function rewarder(uint) external view returns (address);
+    function totalAllocPoint() external view returns (uint);
 }

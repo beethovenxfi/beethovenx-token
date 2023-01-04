@@ -4,11 +4,9 @@ pragma solidity ^0.8.17;
 import "./IReliquary.sol";
 
 interface IReliquaryGamified is IReliquary {
-    function modifyMaturity(uint256 relicId, uint256 bonus) external;
+    function modifyMaturity(uint relicId, uint bonus) external;
+    function commitLastMaturityBonus(uint relicId) external;
 
-    function commitLastMaturityBonus(uint256 relicId) external;
-
-    function genesis(uint256 relicId) external view returns (uint256);
-
-    function lastMaturityBonus(uint256 relicId) external view returns (uint256);
+    function genesis(uint relicId) external view returns (uint);
+    function lastMaturityBonus(uint relicId) external view returns (uint);
 }

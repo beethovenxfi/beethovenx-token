@@ -5,7 +5,7 @@ import '@openzeppelin/contracts/utils/Strings.sol';
 import '../interfaces/INFTDescriptor.sol';
 import '../interfaces/IReliquary.sol';
 
-contract BeetsNFTDescriptor is INFTDescriptor {
+contract BeetsNftDescriptor is INFTDescriptor {
     using Strings for uint;
 
     string private constant IPFS = 'https://beethoven-assets.s3.eu-central-1.amazonaws.com/reliquary';
