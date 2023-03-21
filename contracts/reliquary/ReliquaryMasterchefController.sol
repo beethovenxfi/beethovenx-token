@@ -91,6 +91,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     error CommitteeAllocationGreaterThanControlled();
     error AllocationPointsAlreadySetForCurrentEpoch();
     error ZeroAmount();
+    error IncentiveTokenAlreadySupported();
     error UnsupportedIncentiveToken();
     error NoIncentivesForEpoch();
     error NoVotesForEpoch();
@@ -264,6 +265,12 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
 
         return allocations;
+    }
+
+    function addSupportedIncentiveToken(IERC20 incentiveToken) external onlyRole(OPERATOR) {
+        if (_supportedIncentiveTokens.contains(address(incentiveToken))) revert IncentiveTokenAlreadySupported();
+
+        _supportedIncentiveTokens.add(address(incentiveToken));
     }
 
     function getSupportedIncentiveTokens() external view returns (address[] memory) {
