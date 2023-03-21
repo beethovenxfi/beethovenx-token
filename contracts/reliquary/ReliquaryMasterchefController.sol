@@ -76,6 +76,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     // epoch -> farmId -> incentiveToken -> amount
     mapping(uint => mapping(uint => mapping(address => uint))) private _incentives;
+    // epoch -> farmId -> incentiveToken -> relicId -> hasClaimed
+    mapping(uint => mapping(uint => mapping(address => mapping(uint => bool)))) private _incentiveClaims;
     
     // events
     event IncentiveDeposited(uint indexed epoch, uint indexed farmId, address indexed incentiveToken, uint amount);
@@ -97,6 +99,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     error NoVotesForEpoch();
     error RelicDidNotVoteForThisFarm();
     error IncentivesForEpochNotYetClaimable();
+    error IncentivesAlreadyClaimed();
 
     constructor(IMasterChef _masterChef, IReliquary _reliquary, uint _maBeetsAllocPoints, uint _committeeAllocPoints) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -302,6 +305,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         _requireIsSupportedIncentiveToken(incentiveToken);
         if (epoch > getCurrentEpochTimestamp()) revert IncentivesForEpochNotYetClaimable();
 
+        if (_incentiveClaims[epoch][farmId][address(incentiveToken)][relicId] == true) {
+            revert IncentivesAlreadyClaimed();
+        }
+
         uint incentivesForFarm = _incentives[epoch][farmId][address(incentiveToken)];
         uint totalVotesForFarm = _epochVotes[epoch][farmId];
         uint relicVotesForFarm = _relicVotes[epoch][relicId][farmId];
@@ -309,6 +316,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         if (incentivesForFarm == 0) revert NoIncentivesForEpoch();
         if (totalVotesForFarm == 0) revert NoVotesForEpoch();
         if (relicVotesForFarm == 0) revert RelicDidNotVoteForThisFarm();
+        
+        _incentiveClaims[epoch][farmId][address(incentiveToken)][relicId] = true;
         
         //TODO: manage rounding and fix math
         uint incentivesForRelic = incentivesForFarm * (relicVotesForFarm / totalVotesForFarm);
