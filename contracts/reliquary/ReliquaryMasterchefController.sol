@@ -58,11 +58,15 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     // 7 * 86400 seconds - all future times are rounded by week
     uint private constant WEEK = 604800;
 
-    uint public maBeetsAllocPoints = 0;
-    uint public committeeAllocPoints = 0;
+    // The number of master chef allocation points controlled by maBEETS votes
+    uint public maBeetsAllocPoints;
+    // The number of master chef allocation points controlled by the liquidity committee (music directors)
+    uint public committeeAllocPoints;
 
+    // An array of all masterchef farms. Triggering syncFarms will create references for any newly created farms.
     Farm[] public farms;
 
+    // Here we track the votes per relic.
     // epoch -> relicId -> votes
     mapping(uint => mapping(uint => uint[])) private _relicVotes;
     // epoch -> farmId -> amount
@@ -72,12 +76,13 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     // epoch -> allocationsPointsSet
     mapping(uint => bool) private _allocationPointsSetForEpoch;
 
-    EnumerableSet.AddressSet private _supportedIncentiveTokens;
-
     // epoch -> farmId -> incentiveToken -> amount
     mapping(uint => mapping(uint => mapping(address => uint))) private _incentives;
     // epoch -> farmId -> incentiveToken -> relicId -> hasClaimed
     mapping(uint => mapping(uint => mapping(address => mapping(uint => bool)))) private _incentiveClaims;
+
+    // Incentive tokens need to be whitelisted individually, any non whitelisted incentive token will be rejected.
+    EnumerableSet.AddressSet private _supportedIncentiveTokens;
     
     // events
     event IncentiveDeposited(uint indexed epoch, uint indexed farmId, address indexed incentiveToken, uint amount);
@@ -318,7 +323,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         if (relicVotesForFarm == 0) revert RelicDidNotVoteForThisFarm();
         
         _incentiveClaims[epoch][farmId][address(incentiveToken)][relicId] = true;
-        
+
         //TODO: manage rounding and fix math
         uint incentivesForRelic = incentivesForFarm * (relicVotesForFarm / totalVotesForFarm);
 
