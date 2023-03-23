@@ -121,12 +121,18 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         committeeAllocPoints = _committeeAllocPoints;
     }
 
-    function getNextEpochTimestamp() public view returns (uint) {
-        return (block.timestamp + WEEK) / WEEK * WEEK;
-    }
-
+    /**
+     * @dev The current epoch is defined as the start of the current week.
+     */
     function getCurrentEpochTimestamp() public view returns (uint) {
         return (block.timestamp) / WEEK * WEEK;
+    }
+
+    /**
+     * @dev The next epoch is defined as the start of the next week.
+     */
+    function getNextEpochTimestamp() public view returns (uint) {
+        return (block.timestamp + WEEK) / WEEK * WEEK;
     }
 
     function setMaBeetsAllocPoints(uint numAllocPoints) external onlyRole(OPERATOR) {
@@ -134,13 +140,17 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
         emit MaBeetsAllocationPointsSet(numAllocPoints);
     }
-
     function setCommitteeAllocPoints(uint numAllocPoints) external onlyRole(OPERATOR) {
         committeeAllocPoints = numAllocPoints;
 
         emit CommitteeAllocationPointsSet(numAllocPoints);
     }
 
+    /**
+     * @dev Sync any new farms that have been deployed to the masterchef. The lastFarmId param allows
+     * us to set an upper bound on the number of farms that will be processed, ensuring that this operation
+     * wont run in to gas issues.
+     */
     function syncFarms(uint lastFarmId, FarmStatus initialStatus) external onlyRole(OPERATOR) {
         if (lastFarmId == farms.length - 1) revert NoNewFarmsToSync();
 
@@ -161,6 +171,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
+    /**
+     * @dev Sets the farm with id as enabled. Only enabled farms accept votes for the next epoch.
+     */
     function enableFarm(uint farmId) external onlyRole(OPERATOR) {
         _requireFarmValidAndNotDisabled(farmId);
         
@@ -169,6 +182,11 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit FarmEnabled(farmId);
     }
 
+    /**
+     * @dev Sets the farm with id as disabled. Disabled farms do not accept votes for the next epoch.
+     * If a farm is disabled in the middle of a voting period, any votes set for that farm will be ignored
+     * when calculating allocation points per farm.
+     */
     function disableFarm(uint farmId) external onlyRole(OPERATOR) {
         _requireFarmValidAndNotDisabled(farmId);
 
@@ -177,6 +195,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit FarmDisabled(farmId);
     }
 
+    /**
+     * @dev Convenience function to set votes for several relics at once. Be careful of gas spending!
+     */
     function setVotesForRelics(uint[] memory relicIds, Vote[][] memory votes) external nonReentrant {
         if (relicIds.length != votes.length) revert ArrayLengthMismatch();
 
@@ -185,26 +206,42 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
+    /**
+     * @dev Allows the owner or approved to cast votes for a specific relic.
+     */
     function setVotesForRelic(uint relicId, Vote[] memory votes) public nonReentrant {
         _setVotesForRelic(relicId, votes);
     }
 
+    /**
+     * @dev Internal handling for setting votes for a relic, nonReentrant modifier is not used.
+     * All votes for a relic must be submitted at once. Submitting another set of votes for a given
+     * relic will invalidate the existing votes.
+     */
     function _setVotesForRelic(uint relicId, Vote[] memory votes) internal {
+        // TODO: It may be necessary to allow for multiple transactions, if the number of votes gets too big to be
+        // handled by a single block.
+
         _requireIsApprovedOrOwner(relicId);
 
         uint nextEpoch = getNextEpochTimestamp();
+
+        // clear any existing votes for this relic.
+        _clearPreviousVotes(relicId, nextEpoch);
+
         PositionInfo memory position = reliquary.getPositionForId(relicId);
         LevelInfo memory level = reliquary.getLevelInfo(position.poolId);
 
-        _clearPreviousVotes(relicId, nextEpoch);
-
         uint[] memory relicVotes = new uint[](farms.length);
+        uint maxLevelMultiplier = level.multipliers[level.multipliers.length - 1];
         uint assignedAmount = 0;
-        uint votingPower = level.multipliers[position.level]
-            / level.multipliers[level.multipliers.length - 1]
-            * position.amount;
+
+        // calculate the total voting power for this relic
+        // votingPower = currentLevelMultiplier / maxLevelMultiplier * amount
+        uint votingPower = level.multipliers[position.level] / maxLevelMultiplier * position.amount;
         
         for (uint i = 0; i < votes.length; i++) {
+            // keep track of the entire amount
             assignedAmount += votes[i].amount;
 
             _requireFarmValidAndNotDisabled(votes[i].farmId);
@@ -213,8 +250,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
             relicVotes[votes[i].farmId] = votes[i].amount;
         }
 
+        // if the user submitted votes exceed the total voting power for this relic, reject
         if (assignedAmount > votingPower) revert AmountExceedsVotingPower();
 
+        // store the votes for this relic.
         _relicVotes[nextEpoch][relicId] = relicVotes; 
 
         emit VotesSetForRelic(relicId, votes);
@@ -224,7 +263,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         uint totalEpochVotes = 0;
 
         for (uint i = 0; i < farms.length; i++) {
-            totalEpochVotes += _epochVotes[epoch][i];
+            if (farms[i].status == FarmStatus.ENABLED) {
+                totalEpochVotes += _epochVotes[epoch][i];
+            }
         }
 
         return totalEpochVotes;
