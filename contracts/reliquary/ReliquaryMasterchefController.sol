@@ -60,6 +60,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     // 7 * 86400 seconds - all future times are rounded by week
     uint private constant WEEK = 604800;
 
+    uint private constant MABEETS_PRECISION = 1e18;
+
     // The number of master chef allocation points controlled by maBEETS votes
     uint public maBeetsAllocPoints;
     // The number of master chef allocation points controlled by the liquidity committee (music directors)
@@ -113,6 +115,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     error RelicDidNotVoteForThisFarm();
     error IncentivesForEpochNotYetClaimable();
     error IncentivesAlreadyClaimed();
+    error NoDuplicateVotes();
 
     constructor(IMasterChef _masterChef, IReliquary _reliquary, uint _maBeetsAllocPoints, uint _committeeAllocPoints) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -135,17 +138,6 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      */
     function getNextEpochTimestamp() public view returns (uint) {
         return (block.timestamp + WEEK) / WEEK * WEEK;
-    }
-
-    function setMaBeetsAllocPoints(uint numAllocPoints) external onlyRole(OPERATOR) {
-        maBeetsAllocPoints = numAllocPoints;
-
-        emit MaBeetsAllocationPointsSet(numAllocPoints);
-    }
-    function setCommitteeAllocPoints(uint numAllocPoints) external onlyRole(OPERATOR) {
-        committeeAllocPoints = numAllocPoints;
-
-        emit CommitteeAllocationPointsSet(numAllocPoints);
     }
 
     /**
@@ -226,6 +218,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         // handled by a single block.
 
         _requireIsApprovedOrOwner(relicId);
+        _requireNoDuplicateVotes(votes);
 
         uint nextEpoch = getNextEpochTimestamp();
 
@@ -241,7 +234,12 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
         // calculate the total voting power for this relic
         // votingPower = currentLevelMultiplier / maxLevelMultiplier * amount
-        uint votingPower = level.multipliers[position.level] / maxLevelMultiplier * position.amount;
+        uint votingPower = 
+            position.amount
+            * MABEETS_PRECISION
+            * level.multipliers[position.level]
+            / maxLevelMultiplier
+            / MABEETS_PRECISION;
         
         for (uint i = 0; i < votes.length; i++) {
             // keep track of the entire amount
@@ -298,6 +296,17 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
 
         return votes;
+    }
+
+    function setMaBeetsAllocPoints(uint numAllocPoints) external onlyRole(OPERATOR) {
+        maBeetsAllocPoints = numAllocPoints;
+
+        emit MaBeetsAllocationPointsSet(numAllocPoints);
+    }
+    function setCommitteeAllocPoints(uint numAllocPoints) external onlyRole(OPERATOR) {
+        committeeAllocPoints = numAllocPoints;
+
+        emit CommitteeAllocationPointsSet(numAllocPoints);
     }
 
     function getMaBeetsAllocationsForEpoch(uint epoch) public view returns (uint[] memory) {
@@ -429,6 +438,19 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     function _requireIsWhiteListedIncentiveToken(IERC20 incentiveToken) private view {
         if (!_whiteListedIncentiveTokens.contains(address(incentiveToken))) revert UnsupportedIncentiveToken();
+    }
+
+    function _requireNoDuplicateVotes(Vote[] memory votes) private pure {
+        uint i;
+        uint j;
+
+        for (i = 0; i < votes.length - 1; i++) {
+            for (j = i + 1; j < votes.length; j++) {
+                if (votes[i].farmId == votes[j].farmId) {
+                    revert NoDuplicateVotes();
+                }
+            }
+        }
     }
 
     function _clearPreviousVotes(uint relicId, uint nextEpoch) private {
