@@ -259,6 +259,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit VotesSetForRelic(relicId, votes);
     }
 
+    /**
+     * @dev The total number of votes cast for a given epoch.
+     */
     function getTotalVotesForEpoch(uint epoch) public view returns (uint) {
         uint totalEpochVotes = 0;
 
@@ -271,10 +274,16 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return totalEpochVotes;
     }
 
+    /**
+     * @dev The votes cast by a relic for a given epoch.
+     */
     function getRelicVotesForEpoch(uint relicId, uint epoch) external view returns (uint[] memory) {
         return _relicVotes[epoch][relicId];
     }
 
+    /**
+     * @dev Formatted Vote[] of votes cast per farm for a given epoch.
+     */
     function getEpochVotes(uint epoch) external view returns (Vote[] memory) {
         Vote[] memory votes = new Vote[](farms.length);
 
