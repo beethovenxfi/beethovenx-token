@@ -33,7 +33,9 @@ struct Farm {
     uint farmId;
     IERC20 token;
     bytes32 poolId;
-    FarmStatus status;
+    // we store status history as two parallel arrays
+    FarmStatus[] statuses;
+    uint[] statusEpochs;
 }
 
 struct Vote {
@@ -92,8 +94,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     event IncentiveDeposited(uint indexed epoch, uint indexed farmId, address indexed incentiveToken, uint amount);
     event MaBeetsAllocationPointsSet(uint numAllocPoints);
     event CommitteeAllocationPointsSet(uint numAllocPoints);
-    event FarmEnabled(uint indexed farmId);
-    event FarmDisabled(uint indexed farmId);
+    event FarmEnabled(uint indexed farmId, uint indexed epoch);
+    event FarmDisabled(uint indexed farmId, uint indexed epoch);
     event VotesSetForRelic(uint indexed relicId, Vote[] votes);
     event IncentiveTokenWhiteListed(IERC20 indexed incentiveToken);
 
@@ -116,6 +118,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     error IncentivesForEpochNotYetClaimable();
     error IncentivesAlreadyClaimed();
     error NoDuplicateVotes();
+    error FarmNotRegisteredForEpoch();
 
     constructor(IMasterChef _masterChef, IReliquary _reliquary, uint _maBeetsAllocPoints, uint _committeeAllocPoints) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -149,17 +152,25 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         if (farms.length > 0 && lastFarmId == farms.length - 1) revert NoNewFarmsToSync();
 
         uint firstFarmId = farms.length;
+        uint nextEpoch = getNextEpochTimestamp();
 
         for (uint i = firstFarmId; i <= lastFarmId; i++) {
             // this call will revert if the farmId does not exist
             address lpToken = masterChef.lpTokens(i);
+            
+            FarmStatus[] memory statuses = new FarmStatus[](1);
+            statuses[0] = initialStatus;
+
+            uint[] memory statusEpochs = new uint[](1);
+            statusEpochs[0] = nextEpoch;
 
             farms.push(
                 Farm({
                     farmId: i,
                     token: IERC20(lpToken),
                     poolId: _getBalancerPoolId(lpToken),
-                    status: initialStatus
+                    statuses: statuses,
+                    statusEpochs: statusEpochs
                 })
             );
         }
@@ -170,11 +181,15 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      */
     function enableFarm(uint farmId) external onlyRole(OPERATOR) {
         if (farmId >= farms.length) revert FarmDoesNotExist();
-        if (farms[farmId].status == FarmStatus.ENABLED) revert FarmIsEnabled();
+        if (farms[farmId].statuses[farms[farmId].statuses.length - 1] == FarmStatus.ENABLED) {
+            revert FarmIsEnabled();
+        }
   
-        farms[farmId].status = FarmStatus.ENABLED;
+        uint epoch = getNextEpochTimestamp();
 
-        emit FarmEnabled(farmId);
+        _addStatusToFarm(farmId, FarmStatus.ENABLED, epoch);
+
+        emit FarmEnabled(farmId, epoch);
     }
 
     /**
@@ -185,9 +200,46 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     function disableFarm(uint farmId) external onlyRole(OPERATOR) {
         _requireFarmValidAndNotDisabled(farmId);
 
-        farms[farmId].status = FarmStatus.DISABLED;
+        uint epoch = getNextEpochTimestamp();
 
-        emit FarmDisabled(farmId);
+        _addStatusToFarm(farmId, FarmStatus.DISABLED, epoch);
+
+        emit FarmDisabled(farmId, epoch);
+    }
+
+    function getFarmStatuses(uint farmId) public view returns (FarmStatus[] memory statuses, uint[] memory epochs) {
+        statuses = farms[farmId].statuses;
+        epochs = farms[farmId].statusEpochs;
+    }
+
+    function getFarmStatusForEpoch(uint farmId, uint epoch) external view returns (FarmStatus) {
+        if (farms[farmId].statusEpochs[0] > epoch) revert FarmNotRegisteredForEpoch();
+
+        return _getFarmStatusForEpoch(farmId, epoch);
+    }
+
+    // we assume the farmId has already been verified to exist and that the status change is valid
+    function _addStatusToFarm(uint farmId, FarmStatus status, uint epoch) private {
+        uint numStatuses = farms[farmId].statuses.length;
+
+        if (epoch == farms[farmId].statusEpochs[numStatuses - 1]) {
+            farms[farmId].statuses[numStatuses - 1] = status;
+        } else {
+            FarmStatus[] memory statuses = new FarmStatus[](numStatuses + 1);
+            uint[] memory epochs = new uint[](numStatuses + 1);
+            
+            for (uint i = 0; i < farms[farmId].statuses.length; i++) {
+                statuses[i] = farms[farmId].statuses[i];
+                epochs[i] = farms[farmId].statusEpochs[i];
+            }
+
+            statuses[statuses.length - 1] = status;
+            epochs[epochs.length - 1] = epoch;
+
+            farms[farmId].statuses = statuses;
+            farms[farmId].statusEpochs = epochs;
+        }
+        
     }
 
     /**
@@ -267,9 +319,12 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         uint totalEpochVotes = 0;
 
         for (uint i = 0; i < farms.length; i++) {
-            if (farms[i].status == FarmStatus.ENABLED) {
+            totalEpochVotes += _epochVotes[epoch][i];
+
+            // TODO: this is more correct, but will likely lead to out of gas errors
+            /* if (_getFarmStatusForEpoch(i, epoch) == FarmStatus.ENABLED) {
                 totalEpochVotes += _epochVotes[epoch][i];
-            }
+            } */
         }
 
         return totalEpochVotes;
@@ -429,7 +484,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     function _requireFarmValidAndNotDisabled(uint farmId) private view {
         if (farmId >= farms.length) revert FarmDoesNotExist();
-        if (farms[farmId].status == FarmStatus.DISABLED) revert FarmIsDisabled();
+        if (farms[farmId].statuses[farms[farmId].statuses.length - 1] == FarmStatus.DISABLED) {
+             revert FarmIsDisabled();
+        }
     }
 
     function _requireIsApprovedOrOwner(uint relicId) private view {
@@ -459,6 +516,20 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         for (uint i = 0; i < votes.length; i++) {
             _epochVotes[nextEpoch][i] = _epochVotes[nextEpoch][i] - votes[i];
         }
+    }
+
+    function _getFarmStatusForEpoch(uint farmId, uint epoch) private view returns (FarmStatus) {
+        if (farms[farmId].statusEpochs[0] > epoch) revert FarmNotRegisteredForEpoch();
+
+        FarmStatus status = FarmStatus.DISABLED;
+
+        for (uint i = 0; i < farms[farmId].statusEpochs.length; i++) {
+            if (farms[farmId].statusEpochs[i] <= epoch) {
+                status = farms[farmId].statuses[i];
+            }
+        }
+
+        return status;
     }
 
     // This is just a reference implementation, good chance it wouldn't work exactly like this
