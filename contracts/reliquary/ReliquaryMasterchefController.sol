@@ -24,8 +24,10 @@ import "../interfaces/IReliquary.sol";
 import "../interfaces/IMasterChef.sol";
 import "../interfaces/IBalancerPool.sol";
 
+import "hardhat/console.sol";
 
-enum FarmStatus { ENABLED, DISABLED }
+
+enum FarmStatus { DISABLED, ENABLED }
 
 struct Farm {
     uint farmId;
@@ -49,8 +51,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @dev Access control roles.
-    bytes32 private constant OPERATOR = keccak256("OPERATOR");
-    bytes32 private constant COMMITTEE_MEMBER = keccak256("COMMITTEE_MEMBER");
+    bytes32 public constant OPERATOR = keccak256("OPERATOR");
+    bytes32 public constant COMMITTEE_MEMBER = keccak256("COMMITTEE_MEMBER");
 
     IMasterChef public immutable masterChef;
     IReliquary public immutable reliquary;
@@ -152,19 +154,19 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * wont run in to gas issues.
      */
     function syncFarms(uint lastFarmId, FarmStatus initialStatus) external onlyRole(OPERATOR) {
-        if (lastFarmId == farms.length - 1) revert NoNewFarmsToSync();
+        if (farms.length > 0 && lastFarmId == farms.length - 1) revert NoNewFarmsToSync();
 
         uint firstFarmId = farms.length;
 
         for (uint i = firstFarmId; i <= lastFarmId; i++) {
             // this call will revert if the farmId does not exist
-            IMasterChef.PoolInfo memory poolInfo = masterChef.poolInfo(i);
+            address lpToken = masterChef.lpTokens(i);
 
             farms.push(
                 Farm({
                     farmId: i,
-                    token: poolInfo.lpToken,
-                    poolId: _getBalancerPoolId(poolInfo.lpToken),
+                    token: IERC20(lpToken),
+                    poolId: _getBalancerPoolId(lpToken),
                     status: initialStatus
                 })
             );
@@ -175,8 +177,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev Sets the farm with id as enabled. Only enabled farms accept votes for the next epoch.
      */
     function enableFarm(uint farmId) external onlyRole(OPERATOR) {
-        _requireFarmValidAndNotDisabled(farmId);
-        
+        if (farmId >= farms.length) revert FarmDoesNotExist();
+        if (farms[farmId].status == FarmStatus.ENABLED) revert FarmIsEnabled();
+  
         farms[farmId].status = FarmStatus.ENABLED;
 
         emit FarmEnabled(farmId);
@@ -406,9 +409,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         incentiveToken.safeTransfer(recipient, incentivesForRelic);
     }
 
-    function _getBalancerPoolId(IERC20 token) internal view returns (bytes32) {
+    function _getBalancerPoolId(address token) internal view returns (bytes32) {
         // It's possible that the token is not a pool, in which case we return an empty string
-        try IBalancerPool(address(token)).getPoolId() returns (bytes32 poolId) {
+        try IBalancerPool(token).getPoolId() returns (bytes32 poolId) {
             return poolId;
         } catch {
             return "";

@@ -19,7 +19,16 @@ interface IMasterChef {
        uint256 accSushiPerShare; // Accumulated SUSHI per share, times 1e12. See below.
    }
 
-   function poolInfo(uint256 pid) external view returns (IMasterChef.PoolInfo memory);
+    function lpTokens(uint256) external view returns (address);
+    function poolInfo(uint256)
+        external
+        view
+        returns (
+            uint256 allocPoint,
+            uint256 lastRewardBlock,
+            uint256 accBeetsPerShare
+        );
+   function poolLength() view external returns(uint256);
    function totalAllocPoint() external view returns (uint256);
    function deposit(uint256 _pid, uint256 _amount) external;
    function set(uint256 _pid, uint256 _allocPoint, IRewarder _rewarder, bool overwrite) external;
