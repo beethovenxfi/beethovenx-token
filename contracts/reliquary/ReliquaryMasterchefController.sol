@@ -46,6 +46,12 @@ struct FarmAllocation {
     uint allocPoints;
 }
 
+struct FarmIncentive {
+    uint farmId;
+    IERC20 token;
+    uint amount;
+}
+
 contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerable {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -383,7 +389,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit CommitteeAllocationPointsSet(numAllocPoints);
     }
 
-    // because of rounding, its possible for the allocations to add up to be slightly more than allocated.
+    // Because of rounding, its possible for the allocations to add up to be slightly more than allocated.
     // The impact here is very small and it does not impact the function of the masterchef, so we allow for it.
     function getMaBeetsAllocationsForEpoch(uint epoch) public view returns (uint[] memory) {
         uint[] memory allocations = new uint[](farms.length);
@@ -429,34 +435,16 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         uint[] memory maBeetsAllocations = getMaBeetsAllocationsForEpoch(epoch);
 
         for (uint i = 0; i < farms.length; i++) {
-            allocations[i] = _committeeEpochAllocations[epoch][i];
-            allocations[i] += maBeetsAllocations[i];
+            //TODO this is not correct when points change over time, would need to store point history
+            allocations[i] = committeeAllocPoints == 0 ? 0 : _committeeEpochAllocations[epoch][i];
+            allocations[i] += maBeetsAllocPoints == 0 ? 0 : maBeetsAllocations[i];
         }
 
         return allocations;
     }
 
-    function whiteListIncentiveToken(IERC20 incentiveToken) external onlyRole(OPERATOR) {
-        if (_whiteListedIncentiveTokens.contains(address(incentiveToken))) revert IncentiveTokenAlreadyWhiteListed();
-
-        _whiteListedIncentiveTokens.add(address(incentiveToken));
-
-        emit IncentiveTokenWhiteListed(incentiveToken);
-    }
-
-    function isIncentiveTokenWhiteListed(IERC20 incentiveToken) external view returns (bool) {
-        return _whiteListedIncentiveTokens.contains(address(incentiveToken));
-    }
-
-    function getWhiteListedIncentiveToken(uint index) external view returns (IERC20) {
-        return IERC20(_whiteListedIncentiveTokens.at(index));
-    }
-
-    function getWhiteListedIncentiveTokens() external view returns (address[] memory) {
-        return _whiteListedIncentiveTokens.values();
-    }
-
     function depositIncentiveForFarm(uint farmId, IERC20 incentiveToken, uint incentiveAmount) external nonReentrant {
+        _requireFarmValidAndNotDisabled(farmId);
         _requireIsWhiteListedIncentiveToken(incentiveToken);
         if (incentiveAmount == 0) revert ZeroAmount();
 
@@ -499,6 +487,67 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         uint incentivesForRelic = incentivesForFarm * (relicVotesForFarm / totalVotesForFarm);
 
         incentiveToken.safeTransfer(recipient, incentivesForRelic);
+    }
+
+    function getFarmIncentivesForEpoch(
+        uint farmId,
+        uint epoch
+    ) external view returns (FarmIncentive[] memory incentives) {
+        address[] memory tokens = getWhiteListedIncentiveTokens();
+        uint count = 0;
+        uint i;
+
+        for (i = 0; i < tokens.length; i++) {
+            if (_incentives[epoch][farmId][address(tokens[i])] > 0) {
+                count++;
+            }
+        }
+
+        incentives = new FarmIncentive[](count);
+        uint idx = 0;
+
+        for (i = 0; i < tokens.length; i++) {
+            if (_incentives[epoch][farmId][tokens[i]] > 0) {
+                incentives[idx] = FarmIncentive({
+                    farmId: farmId,
+                    token: IERC20(tokens[i]),
+                    amount: _incentives[epoch][farmId][address(tokens[i])]
+                });
+
+                idx++;
+            }
+        }
+    }
+
+    function getIncentiveAmountForEpoch(
+        uint farmId,
+        uint epoch,
+        IERC20 incentiveToken
+    ) public view returns (uint) {
+        _requireIsWhiteListedIncentiveToken(incentiveToken);
+        if (farmId >= farms.length) revert FarmDoesNotExist();
+
+        return _incentives[epoch][farmId][address(incentiveToken)];
+    }
+
+    function whiteListIncentiveToken(IERC20 incentiveToken) external onlyRole(OPERATOR) {
+        if (_whiteListedIncentiveTokens.contains(address(incentiveToken))) revert IncentiveTokenAlreadyWhiteListed();
+
+        _whiteListedIncentiveTokens.add(address(incentiveToken));
+
+        emit IncentiveTokenWhiteListed(incentiveToken);
+    }
+
+    function isIncentiveTokenWhiteListed(IERC20 incentiveToken) external view returns (bool) {
+        return _whiteListedIncentiveTokens.contains(address(incentiveToken));
+    }
+
+    function getWhiteListedIncentiveToken(uint index) external view returns (IERC20) {
+        return IERC20(_whiteListedIncentiveTokens.at(index));
+    }
+
+    function getWhiteListedIncentiveTokens() public view returns (address[] memory) {
+        return _whiteListedIncentiveTokens.values();
     }
 
     function _getBalancerPoolId(address token) internal view returns (bytes32) {
@@ -580,7 +629,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     }
 
     // This is just a reference implementation, good chance it wouldn't work exactly like this
-    function setMasterchefAllocationPointsForCurrentEpoch() external onlyRole(OPERATOR) {
+    /*function setMasterchefAllocationPointsForCurrentEpoch() external onlyRole(OPERATOR) {
         uint epoch = getCurrentEpochTimestamp();
         uint[] memory allocations = getAllocationsForEpoch(epoch);
 
@@ -589,5 +638,5 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         for (uint i = 0; i < farms.length; i++) {
             masterChef.set(i, allocations[i], IRewarder(address(0)), false);
         }
-    }
+    }*/
 }
