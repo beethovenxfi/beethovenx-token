@@ -42,6 +42,7 @@ struct Vote {
 
 struct FarmAllocation {
     uint farmId;
+    // these should be provided in normal form (ie without precision added)
     uint allocPoints;
 }
 
