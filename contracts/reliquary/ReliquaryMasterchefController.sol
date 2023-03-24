@@ -33,9 +33,6 @@ struct Farm {
     uint farmId;
     IERC20 token;
     bytes32 poolId;
-    // we store status history as two parallel arrays
-    FarmStatus[] statuses;
-    uint[] statusEpochs;
 }
 
 struct Vote {
@@ -60,7 +57,11 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     IReliquary public immutable reliquary;
 
     // 7 * 86400 seconds - all future times are rounded by week
-    uint private constant WEEK = 604800;
+    uint public constant EPOCH_DURATION_IN_SECONDS = 604800;
+    // The voting window is the period of time during the current epoch where votes for the next epoch are accepted
+    // We define an integer value here that is the seconds before the next epoch when voting ends.
+    // IE: we say that voting for the next epoch closes 1 day before the epoch starts
+    uint public constant VOTING_CLOSES_SECONDS_BEFORE_NEXT_EPOCH = 86400;
 
     uint private constant MABEETS_PRECISION = 1e18;
 
@@ -71,6 +72,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     // An array of all masterchef farms. Triggering syncFarms will create references for any newly created farms.
     Farm[] public farms;
+    // We store status history as two parallel arrays, this allows us to determine to state of a farm at any
+    // epoch in the past.
+    FarmStatus[][] private _farmStatuses;
+    uint[][] private _farmStatusEpochs;
 
     // Here we track the votes per relic.
     // epoch -> relicId -> votes
@@ -119,6 +124,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     error IncentivesAlreadyClaimed();
     error NoDuplicateVotes();
     error FarmNotRegisteredForEpoch();
+    error VotingForEpochClosed();
 
     constructor(IMasterChef _masterChef, IReliquary _reliquary, uint _maBeetsAllocPoints, uint _committeeAllocPoints) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -133,14 +139,19 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev The current epoch is defined as the start of the current week.
      */
     function getCurrentEpochTimestamp() public view returns (uint) {
-        return (block.timestamp) / WEEK * WEEK;
+        return (block.timestamp) / EPOCH_DURATION_IN_SECONDS * EPOCH_DURATION_IN_SECONDS;
     }
 
     /**
      * @dev The next epoch is defined as the start of the next week.
      */
     function getNextEpochTimestamp() public view returns (uint) {
-        return (block.timestamp + WEEK) / WEEK * WEEK;
+        return (block.timestamp + EPOCH_DURATION_IN_SECONDS) / EPOCH_DURATION_IN_SECONDS * EPOCH_DURATION_IN_SECONDS;
+    }
+
+
+    function numFarms() public view returns (uint) {
+        return farms.length;
     }
 
     /**
@@ -168,11 +179,12 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
                 Farm({
                     farmId: i,
                     token: IERC20(lpToken),
-                    poolId: _getBalancerPoolId(lpToken),
-                    statuses: statuses,
-                    statusEpochs: statusEpochs
+                    poolId: _getBalancerPoolId(lpToken)
                 })
             );
+
+            _farmStatuses.push(statuses);
+            _farmStatusEpochs.push(statusEpochs);
         }
     }
 
@@ -181,7 +193,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      */
     function enableFarm(uint farmId) external onlyRole(OPERATOR) {
         if (farmId >= farms.length) revert FarmDoesNotExist();
-        if (farms[farmId].statuses[farms[farmId].statuses.length - 1] == FarmStatus.ENABLED) {
+        if (_farmStatuses[farmId][_farmStatuses[farmId].length - 1] == FarmStatus.ENABLED) {
             revert FarmIsEnabled();
         }
   
@@ -208,36 +220,36 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     }
 
     function getFarmStatuses(uint farmId) public view returns (FarmStatus[] memory statuses, uint[] memory epochs) {
-        statuses = farms[farmId].statuses;
-        epochs = farms[farmId].statusEpochs;
+        statuses = _farmStatuses[farmId];
+        epochs = _farmStatusEpochs[farmId];
     }
 
     function getFarmStatusForEpoch(uint farmId, uint epoch) external view returns (FarmStatus) {
-        if (farms[farmId].statusEpochs[0] > epoch) revert FarmNotRegisteredForEpoch();
+        if (_farmStatusEpochs[farmId][0] > epoch) revert FarmNotRegisteredForEpoch();
 
         return _getFarmStatusForEpoch(farmId, epoch);
     }
 
     // we assume the farmId has already been verified to exist and that the status change is valid
     function _addStatusToFarm(uint farmId, FarmStatus status, uint epoch) private {
-        uint numStatuses = farms[farmId].statuses.length;
+        uint numStatuses = _farmStatuses[farmId].length;
 
-        if (epoch == farms[farmId].statusEpochs[numStatuses - 1]) {
-            farms[farmId].statuses[numStatuses - 1] = status;
+        if (epoch == _farmStatusEpochs[farmId][numStatuses - 1]) {
+            _farmStatuses[farmId][numStatuses - 1] = status;
         } else {
             FarmStatus[] memory statuses = new FarmStatus[](numStatuses + 1);
             uint[] memory epochs = new uint[](numStatuses + 1);
             
-            for (uint i = 0; i < farms[farmId].statuses.length; i++) {
-                statuses[i] = farms[farmId].statuses[i];
-                epochs[i] = farms[farmId].statusEpochs[i];
+            for (uint i = 0; i < _farmStatuses[farmId].length; i++) {
+                statuses[i] = _farmStatuses[farmId][i];
+                epochs[i] = _farmStatusEpochs[farmId][i];
             }
 
             statuses[statuses.length - 1] = status;
             epochs[epochs.length - 1] = epoch;
 
-            farms[farmId].statuses = statuses;
-            farms[farmId].statusEpochs = epochs;
+            _farmStatuses[farmId] = statuses;
+            _farmStatusEpochs[farmId] = epochs;
         }
         
     }
@@ -246,6 +258,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev Convenience function to set votes for several relics at once. Be careful of gas spending!
      */
     function setVotesForRelics(uint[] memory relicIds, Vote[][] memory votes) external nonReentrant {
+        _requireIsWithinVotingPeriod();
         if (relicIds.length != votes.length) revert ArrayLengthMismatch();
 
         for (uint i = 0; i < relicIds.length; i++) {
@@ -257,6 +270,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev Allows the owner or approved to cast votes for a specific relic.
      */
     function setVotesForRelic(uint relicId, Vote[] memory votes) public nonReentrant {
+        _requireIsWithinVotingPeriod();
+
         _setVotesForRelic(relicId, votes);
     }
 
@@ -338,16 +353,13 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     }
 
     /**
-     * @dev Formatted Vote[] of votes cast per farm for a given epoch.
+     * @dev The votes cast per farm for a given epoch.
      */
-    function getEpochVotes(uint epoch) external view returns (Vote[] memory) {
-        Vote[] memory votes = new Vote[](farms.length);
+    function getEpochVotes(uint epoch) external view returns (uint[] memory) {
+        uint[] memory votes = new uint[](farms.length);
 
         for (uint i = 0; i < farms.length; i++) {
-            votes[i] = Vote({
-                farmId: i,
-                amount: _epochVotes[epoch][i]
-            });
+            votes[i] = _epochVotes[epoch][i];
         }
 
         return votes;
@@ -358,6 +370,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
         emit MaBeetsAllocationPointsSet(numAllocPoints);
     }
+
     function setCommitteeAllocPoints(uint numAllocPoints) external onlyRole(OPERATOR) {
         committeeAllocPoints = numAllocPoints;
 
@@ -484,7 +497,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     function _requireFarmValidAndNotDisabled(uint farmId) private view {
         if (farmId >= farms.length) revert FarmDoesNotExist();
-        if (farms[farmId].statuses[farms[farmId].statuses.length - 1] == FarmStatus.DISABLED) {
+        if (_farmStatuses[farmId][_farmStatuses[farmId].length - 1] == FarmStatus.DISABLED) {
              revert FarmIsDisabled();
         }
     }
@@ -510,6 +523,12 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
+    function _requireIsWithinVotingPeriod() private view {
+        if (getNextEpochTimestamp() - block.timestamp <= VOTING_CLOSES_SECONDS_BEFORE_NEXT_EPOCH) {
+             revert VotingForEpochClosed();
+        }
+    }
+
     function _clearPreviousVotes(uint relicId, uint nextEpoch) private {
         uint[] memory votes = _relicVotes[nextEpoch][relicId]; 
 
@@ -519,13 +538,13 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     }
 
     function _getFarmStatusForEpoch(uint farmId, uint epoch) private view returns (FarmStatus) {
-        if (farms[farmId].statusEpochs[0] > epoch) revert FarmNotRegisteredForEpoch();
+        if (_farmStatusEpochs[farmId][0] > epoch) revert FarmNotRegisteredForEpoch();
 
         FarmStatus status = FarmStatus.DISABLED;
 
-        for (uint i = 0; i < farms[farmId].statusEpochs.length; i++) {
-            if (farms[farmId].statusEpochs[i] <= epoch) {
-                status = farms[farmId].statuses[i];
+        for (uint i = 0; i < _farmStatusEpochs[farmId].length; i++) {
+            if (_farmStatusEpochs[farmId][i] <= epoch) {
+                status = _farmStatuses[farmId][i];
             }
         }
 
