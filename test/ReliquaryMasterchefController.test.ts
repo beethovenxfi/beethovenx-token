@@ -9,15 +9,20 @@ import { mine, time } from "@nomicfoundation/hardhat-network-helpers"
 const MASTERCHEF = '0x8166994d9ebBe5829EC86Bd81258149B87faCfd3';
 const RELIQUARY = '0x1ed6411670c709F4e163854654BD52c74E66D7eC';
 
-const RELIC_HOLDER_1 = '0x43C4fF14DAe2Fbb389Dd94498C3D610A0c69a89d';
+const RELIC_HOLDER_1 = '0x2f07C8De8b633a7B4278B28C09a654295D8eEefb';
 const RELIC_HOLDER_2 = '0x911B1ecef200fE24E4ea9B54B9D87C3dfbfDB5Db';
 const RELIC_HOLDER_3 = '0xbf21Ba013A41b443b7b21eaAbBB647ceC360fa68';
 const HOLDER_WITH_3_RELICS = '0x00a01bc13a1ddf4a4af6852baee66b76a0316cbc';
+
+const USDC = '0x04068da6c83afcfa0e13ba15a6696662335d5b75';
+const WFTM = '0x21be370d5312f44cb42ce377bc9b8a0cef1a4c83';
 
 const ONE = BigNumber.from('1000000000000000000');
 
 // run fork
 // yarn hardhat node --fork https://rpc.ftm.tools/ --fork-block-number 58192000
+
+const MABEETS_ALLOC_POINTS = 70;
 
 describe('ReliquaryMasterchefController', function () {
     let owner: SignerWithAddress;
@@ -40,7 +45,7 @@ describe('ReliquaryMasterchefController', function () {
 
         reliquary = (await ethers.getContractAt('IReliquary', RELIQUARY)) as IReliquary;
         masterchef = (await ethers.getContractAt('BeethovenxMasterChef', MASTERCHEF)) as BeethovenxMasterChef;
-        controller = (await deployContract('ReliquaryMasterchefController', [MASTERCHEF, RELIQUARY, 70, 30])) as ReliquaryMasterchefController;
+        controller = (await deployContract('ReliquaryMasterchefController', [MASTERCHEF, RELIQUARY, MABEETS_ALLOC_POINTS, 30])) as ReliquaryMasterchefController;
 
         await controller.grantRole(await controller.OPERATOR(), owner.address);
         await controller.grantRole(await controller.COMMITTEE_MEMBER(), owner.address);
@@ -346,28 +351,32 @@ describe('ReliquaryMasterchefController', function () {
     });
 
     describe('allocation points', () => {
+        beforeEach(async () => {
+            await controller.syncFarms(10, 1);
+        });
+
         it('can set maBeets allocation points', async () => {
             await controller.setMaBeetsAllocPoints(1);
             let maBeetsAllocPoints = await controller.maBeetsAllocPoints();
 
-            expect(maBeetsAllocPoints).to.eq(1);
+            expect(maBeetsAllocPoints).to.eq(1000);
 
             await controller.setMaBeetsAllocPoints(2);
             maBeetsAllocPoints = await controller.maBeetsAllocPoints();
 
-            expect(maBeetsAllocPoints).to.eq(2);
+            expect(maBeetsAllocPoints).to.eq(2000);
         });
 
         it('can set committee allocation points', async () => {
             await controller.setCommitteeAllocPoints(1);
             let committeeAllocPoints = await controller.committeeAllocPoints();
 
-            expect(committeeAllocPoints).to.eq(1);
+            expect(committeeAllocPoints).to.eq(1000);
 
             await controller.setCommitteeAllocPoints(2);
             committeeAllocPoints = await controller.committeeAllocPoints();
 
-            expect(committeeAllocPoints).to.eq(2);
+            expect(committeeAllocPoints).to.eq(2000);
         });
 
         it('reverts when setting mabeets alloc points with non operator acount', async () => {
@@ -377,19 +386,141 @@ describe('ReliquaryMasterchefController', function () {
         it('reverts when setting committee alloc points with non operator acount', async () => {
             await expect(controller.connect(signer1).setCommitteeAllocPoints(1)).to.revertedWith('AccessControl');
         });
+
+        it('returns the correct number of allocation points', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [
+                    {farmId: 0, amount: votingPower1.div('2')},
+                    {farmId: 2, amount: votingPower1.div('2')}
+                ]
+            );
+
+            const allocations = await controller.getMaBeetsAllocationsForEpoch(nextEpoch);
+
+            expect(allocations[0]).to.eq('35000');
+            expect(allocations[2]).to.eq('35000');
+        });
+
+        it('returns the correct number of allocation points when numbers are not whole', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [
+                    {farmId: 0, amount: votingPower1.div('4')},
+                    {farmId: 1, amount: votingPower1.div('4')},
+                    {farmId: 2, amount: votingPower1.div('4')},
+                    {farmId: 3, amount: votingPower1.div('4')}
+                ]
+            );
+
+            const allocations = await controller.getMaBeetsAllocationsForEpoch(nextEpoch);
+
+            expect(allocations[0]).to.eq('17500');
+            expect(allocations[1]).to.eq('17500');
+            expect(allocations[2]).to.eq('17500');
+            expect(allocations[3]).to.eq('17500');
+        });
+
+        it('returns the correct number of allocation points when numbers are not whole 2', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [
+                    {farmId: 0, amount: votingPower1.div('7')},
+                    {farmId: 1, amount: votingPower1.div('7')},
+                    {farmId: 2, amount: votingPower1.div('3')},
+                ]
+            );
+
+            const allocations = await controller.getMaBeetsAllocationsForEpoch(nextEpoch);
+
+            expect(allocations[0]).to.eq('16153');
+            expect(allocations[1]).to.eq('16153');
+            expect(allocations[2]).to.eq('37692');
+        });
+
+        it('can set committee allocation points', async () => {
+            await controller.setCommitteeAllocationsForEpoch([
+                {farmId: 0, allocPoints: 10},
+                {farmId: 1, allocPoints: 10},
+                {farmId: 2, allocPoints: 10},
+            ]);
+
+            const allocations = await controller.getCommitteeAllocationsForEpoch(nextEpoch);
+
+            expect(allocations[0]).to.eq('10000');
+            expect(allocations[1]).to.eq('10000');
+            expect(allocations[2]).to.eq('10000');
+        });
+
+        it('reverts when provided duplicate committee allocations', async () => {
+            await expect(controller.setCommitteeAllocationsForEpoch([
+                {farmId: 0, allocPoints: 10},
+                {farmId: 0, allocPoints: 10},
+            ])).to.revertedWith('NoDuplicateAllocations');
+        });
+
+        it('reverts when provided more alloc points than controlled', async () => {
+            await expect(controller.setCommitteeAllocationsForEpoch([
+                {farmId: 0, allocPoints: 10},
+                {farmId: 1, allocPoints: 10},
+                {farmId: 2, allocPoints: 10},
+                {farmId: 3, allocPoints: 10},
+            ])).to.revertedWith('CommitteeAllocationGreaterThanControlled');
+        });
+
+        it('returns the correct number of total allocation points', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [
+                    {farmId: 0, amount: votingPower1.div('2')},
+                    {farmId: 2, amount: votingPower1.div('2')}
+                ]
+            );
+
+            await controller.setCommitteeAllocationsForEpoch([
+                {farmId: 0, allocPoints: 10},
+                {farmId: 1, allocPoints: 10},
+                {farmId: 2, allocPoints: 10},
+            ]);
+
+            const allocations = await controller.getAllocationsForEpoch(nextEpoch);
+
+            expect(allocations[0]).to.eq('45000');
+            expect(allocations[1]).to.eq('10000');
+            expect(allocations[2]).to.eq('45000');
+        });
     });
 
     describe('incentives', () => {
         it('can whitelist token', async () => {
+            await controller.whiteListIncentiveToken(USDC);
+
+            const token = await controller.getWhiteListedIncentiveToken(0);
+            
+
+            expect(token.toLowerCase()).to.eq(USDC.toLowerCase());
         });
 
         it('cannot whitelist the same token twice', async () => {
+            await controller.whiteListIncentiveToken(USDC);
+
+            await expect(controller.whiteListIncentiveToken(USDC)).to.revertedWith('IncentiveTokenAlreadyWhiteListed');
         });
 
         it('only allows operators to whitelist tokens', async () => {
+            await expect(controller.connect(signer1).whiteListIncentiveToken(USDC)).to.revertedWith('AccessControl');
         });
 
         it('whitelisted tokens are added in order', async () => {
+            await controller.whiteListIncentiveToken(WFTM);
+            await controller.whiteListIncentiveToken(USDC);
+
+
+            const token1 = await controller.getWhiteListedIncentiveToken(0);
+            const token2 = await controller.getWhiteListedIncentiveToken(1);
+
+            expect(token1.toLowerCase()).to.eq(WFTM.toLowerCase());
+            expect(token2.toLowerCase()).to.eq(USDC.toLowerCase());
         });
     });
 })
