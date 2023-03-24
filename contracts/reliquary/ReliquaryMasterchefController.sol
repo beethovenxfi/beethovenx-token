@@ -152,7 +152,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return (block.timestamp + EPOCH_DURATION_IN_SECONDS) / EPOCH_DURATION_IN_SECONDS * EPOCH_DURATION_IN_SECONDS;
     }
 
-
+    /**
+     * @dev The next number of farms that have been synced to the controller. This can be less than the number
+     * of farms that exist on the masterchef
+     */
     function numFarms() public view returns (uint) {
         return farms.length;
     }
