@@ -64,6 +64,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     uint public constant VOTING_CLOSES_SECONDS_BEFORE_NEXT_EPOCH = 86400;
 
     uint private constant MABEETS_PRECISION = 1e18;
+    uint private constant ALLOC_PT_PRECISION = 1e3;
 
     // The number of master chef allocation points controlled by maBEETS votes
     uint public maBeetsAllocPoints;
@@ -123,6 +124,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     error IncentivesForEpochNotYetClaimable();
     error IncentivesAlreadyClaimed();
     error NoDuplicateVotes();
+    error NoDuplicateAllocations();
     error FarmNotRegisteredForEpoch();
     error VotingForEpochClosed();
 
@@ -131,8 +133,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
         masterChef = _masterChef;
         reliquary = _reliquary;
-        maBeetsAllocPoints = _maBeetsAllocPoints;
-        committeeAllocPoints = _committeeAllocPoints;
+        maBeetsAllocPoints = _maBeetsAllocPoints * ALLOC_PT_PRECISION;
+        committeeAllocPoints = _committeeAllocPoints * ALLOC_PT_PRECISION;
     }
 
     /**
@@ -366,38 +368,47 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     }
 
     function setMaBeetsAllocPoints(uint numAllocPoints) external onlyRole(OPERATOR) {
-        maBeetsAllocPoints = numAllocPoints;
+        maBeetsAllocPoints = numAllocPoints * ALLOC_PT_PRECISION;
 
         emit MaBeetsAllocationPointsSet(numAllocPoints);
     }
 
     function setCommitteeAllocPoints(uint numAllocPoints) external onlyRole(OPERATOR) {
-        committeeAllocPoints = numAllocPoints;
+        committeeAllocPoints = numAllocPoints * ALLOC_PT_PRECISION;
 
         emit CommitteeAllocationPointsSet(numAllocPoints);
     }
 
+    // because of rounding, its possible for the allocations to add up to be slightly more than allocated.
+    // The impact here is very small and it does not impact the function of the masterchef, so we allow for it.
     function getMaBeetsAllocationsForEpoch(uint epoch) public view returns (uint[] memory) {
         uint[] memory allocations = new uint[](farms.length);
         uint totalEpochVotes = getTotalVotesForEpoch(epoch);
+        uint totalAllocations = 0;
+
+        if (totalEpochVotes == 0) revert NoVotesForEpoch();
 
         for (uint i = 0; i < farms.length; i++) {
-            // TODO: correct math and handle rounding errors here
             allocations[i] = _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes;
+            totalAllocations += allocations[i];
         }
 
         return allocations;
     }
 
     function setCommitteeAllocationsForEpoch(FarmAllocation[] memory allocations) external onlyRole(COMMITTEE_MEMBER) {
+        _requireNoDuplicateAllocations(allocations);
+
         uint[] memory committeeAllocations = new uint[](farms.length);
         uint totalAllocPoints = 0;
 
         for (uint i = 0; i < allocations.length; i++) {
             _requireFarmValidAndNotDisabled(allocations[i].farmId);
 
-            totalAllocPoints += allocations[i].allocPoints;
-            committeeAllocations[allocations[i].farmId] = allocations[i].allocPoints;
+            // committee allocation points are expect to be provided in normal form (whole numbers), we apply
+            // the additional precision on the input amounts.
+            committeeAllocations[allocations[i].farmId] = allocations[i].allocPoints * ALLOC_PT_PRECISION;
+            totalAllocPoints += committeeAllocations[allocations[i].farmId];
         }
 
         if (totalAllocPoints > committeeAllocPoints) revert CommitteeAllocationGreaterThanControlled();
@@ -518,6 +529,19 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
             for (j = i + 1; j < votes.length; j++) {
                 if (votes[i].farmId == votes[j].farmId) {
                     revert NoDuplicateVotes();
+                }
+            }
+        }
+    }
+
+    function _requireNoDuplicateAllocations(FarmAllocation[] memory allocations) private pure {
+        uint i;
+        uint j;
+
+        for (i = 0; i < allocations.length - 1; i++) {
+            for (j = i + 1; j < allocations.length; j++) {
+                if (allocations[i].farmId == allocations[j].farmId) {
+                    revert NoDuplicateAllocations();
                 }
             }
         }
