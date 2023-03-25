@@ -3,7 +3,7 @@ import { deployContract } from './utilities'
 import { ethers, network } from 'hardhat'
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 import { IERC20, ReliquaryMasterchefController, BeethovenxMasterChef, IReliquary } from '../types'
-import { BigNumber } from 'ethers'
+import { BigNumber, Contract } from 'ethers'
 import { mine, time } from "@nomicfoundation/hardhat-network-helpers"
 
 const MASTERCHEF = '0x8166994d9ebBe5829EC86Bd81258149B87faCfd3';
@@ -357,24 +357,24 @@ describe('ReliquaryMasterchefController', function () {
 
         it('can set maBeets allocation points', async () => {
             await controller.setMaBeetsAllocPoints(1);
-            let maBeetsAllocPoints = await controller.maBeetsAllocPoints();
+            let maBeetsAllocPoints = await controller.getMaBeetsAllocPointsForEpoch(nextEpoch);
 
             expect(maBeetsAllocPoints).to.eq(1000);
 
             await controller.setMaBeetsAllocPoints(2);
-            maBeetsAllocPoints = await controller.maBeetsAllocPoints();
+            maBeetsAllocPoints = await controller.getMaBeetsAllocPointsForEpoch(nextEpoch);
 
             expect(maBeetsAllocPoints).to.eq(2000);
         });
 
         it('can set committee allocation points', async () => {
             await controller.setCommitteeAllocPoints(1);
-            let committeeAllocPoints = await controller.committeeAllocPoints();
+            let committeeAllocPoints = await controller.getComitteeAllocPointsForEpoch(nextEpoch);
 
             expect(committeeAllocPoints).to.eq(1000);
 
             await controller.setCommitteeAllocPoints(2);
-            committeeAllocPoints = await controller.committeeAllocPoints();
+            committeeAllocPoints = await controller.getComitteeAllocPointsForEpoch(nextEpoch);
 
             expect(committeeAllocPoints).to.eq(2000);
         });
@@ -396,7 +396,7 @@ describe('ReliquaryMasterchefController', function () {
                 ]
             );
 
-            const allocations = await controller.getMaBeetsAllocationsForEpoch(nextEpoch);
+            const allocations = await controller.getMaBeetsFarmAllocationsForEpoch(nextEpoch);
 
             expect(allocations[0]).to.eq('35000');
             expect(allocations[2]).to.eq('35000');
@@ -413,7 +413,7 @@ describe('ReliquaryMasterchefController', function () {
                 ]
             );
 
-            const allocations = await controller.getMaBeetsAllocationsForEpoch(nextEpoch);
+            const allocations = await controller.getMaBeetsFarmAllocationsForEpoch(nextEpoch);
 
             expect(allocations[0]).to.eq('17500');
             expect(allocations[1]).to.eq('17500');
@@ -431,7 +431,7 @@ describe('ReliquaryMasterchefController', function () {
                 ]
             );
 
-            const allocations = await controller.getMaBeetsAllocationsForEpoch(nextEpoch);
+            const allocations = await controller.getMaBeetsFarmAllocationsForEpoch(nextEpoch);
 
             expect(allocations[0]).to.eq('16153');
             expect(allocations[1]).to.eq('16153');
@@ -439,28 +439,32 @@ describe('ReliquaryMasterchefController', function () {
         });
 
         it('can set committee allocation points', async () => {
-            await controller.setCommitteeAllocationsForEpoch([
+            await controller.setCommitteeFarmAllocationsForEpoch([
                 {farmId: 0, allocPoints: 10},
                 {farmId: 1, allocPoints: 10},
                 {farmId: 2, allocPoints: 10},
             ]);
 
-            const allocations = await controller.getCommitteeAllocationsForEpoch(nextEpoch);
+            const allocations = await controller.getCommitteeFarmAllocationsForEpoch(nextEpoch);
 
             expect(allocations[0]).to.eq('10000');
             expect(allocations[1]).to.eq('10000');
             expect(allocations[2]).to.eq('10000');
         });
 
+        /* it('reverts when no committee allocation provided for epoch', async () => {
+            await expect(controller.getCommitteeAllocationsForEpoch(nextEpoch)).to.revertedWith('NoCommitteeAllocationForEpoch');
+        }); */
+
         it('reverts when provided duplicate committee allocations', async () => {
-            await expect(controller.setCommitteeAllocationsForEpoch([
+            await expect(controller.setCommitteeFarmAllocationsForEpoch([
                 {farmId: 0, allocPoints: 10},
                 {farmId: 0, allocPoints: 10},
             ])).to.revertedWith('NoDuplicateAllocations');
         });
 
         it('reverts when provided more alloc points than controlled', async () => {
-            await expect(controller.setCommitteeAllocationsForEpoch([
+            await expect(controller.setCommitteeFarmAllocationsForEpoch([
                 {farmId: 0, allocPoints: 10},
                 {farmId: 1, allocPoints: 10},
                 {farmId: 2, allocPoints: 10},
@@ -477,13 +481,13 @@ describe('ReliquaryMasterchefController', function () {
                 ]
             );
 
-            await controller.setCommitteeAllocationsForEpoch([
+            await controller.setCommitteeFarmAllocationsForEpoch([
                 {farmId: 0, allocPoints: 10},
                 {farmId: 1, allocPoints: 10},
                 {farmId: 2, allocPoints: 10},
             ]);
 
-            const allocations = await controller.getAllocationsForEpoch(nextEpoch);
+            const allocations = await controller.getFarmAllocationsForEpoch(nextEpoch);
 
             expect(allocations[0]).to.eq('45000');
             expect(allocations[1]).to.eq('10000');
@@ -492,6 +496,10 @@ describe('ReliquaryMasterchefController', function () {
     });
 
     describe('incentives', () => {
+        beforeEach(async () => {
+            await controller.syncFarms(10, 1);
+        });
+
         it('can whitelist token', async () => {
             await controller.whiteListIncentiveToken(USDC);
 
@@ -521,6 +529,44 @@ describe('ReliquaryMasterchefController', function () {
 
             expect(token1.toLowerCase()).to.eq(WFTM.toLowerCase());
             expect(token2.toLowerCase()).to.eq(USDC.toLowerCase());
+        });
+
+        it('can deposit whitelisted tokens', async () => {
+            await controller.whiteListIncentiveToken(WFTM);
+            await controller.whiteListIncentiveToken(USDC);
+
+            const wftm = (await ethers.getContractAt('IERC20', WFTM)) as IERC20;
+            await wftm.approve(controller.address, ONE);
+
+            const usdc = (await ethers.getContractAt('IERC20', USDC)) as IERC20;
+            await usdc.approve(controller.address, 1e6);
+
+            const balanceBefore = await wftm.balanceOf(owner.address);
+            const usdcBalanceBefore = await usdc.balanceOf(owner.address);
+
+            await controller.depositIncentiveForFarm(0, WFTM, ONE);
+            await controller.depositIncentiveForFarm(0, USDC, 1e6);
+
+            const balanceAfter = await wftm.balanceOf(owner.address);
+            const usdcBalanceAfter = await usdc.balanceOf(owner.address);
+            const controllerWftmBalance = await wftm.balanceOf(controller.address);
+            const controllerUsdcBalance = await usdc.balanceOf(controller.address);
+
+            const incentive = await controller.getIncentiveAmountForEpoch(0, nextEpoch, WFTM);
+            const usdcIncentive = await controller.getIncentiveAmountForEpoch(0, nextEpoch, USDC);
+            const incentives = await controller.getFarmIncentivesForEpoch(0, nextEpoch);
+
+
+            expect(balanceBefore).to.eq(balanceAfter.add(ONE));
+            expect(usdcBalanceBefore).to.eq(usdcBalanceAfter.add(1e6));
+            expect(controllerWftmBalance).to.eq(ONE);
+            expect(controllerUsdcBalance).to.eq(1e6);
+            expect(incentive).to.eq(ONE);
+            expect(usdcIncentive).to.eq(1e6)
+            expect(incentives[0].token.toLowerCase()).to.eq(WFTM.toLowerCase());
+            expect(incentives[0].amount).to.eq(ONE);
+            expect(incentives[1].token.toLowerCase()).to.eq(USDC.toLowerCase());
+            expect(incentives[1].amount).to.eq(1e6);
         });
     });
 })
