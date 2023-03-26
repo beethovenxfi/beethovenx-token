@@ -77,6 +77,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     uint private constant MABEETS_PRECISION = 1e18;
     uint private constant ALLOC_PT_PRECISION = 1e3;
+    uint private constant ONE = 1e18;
 
     // We store allocation point history as parallel arrays. This allows us to determine the allocation points
     // at any epoch in the past. For simplicity, we keep both arrays the same length, so any change to one allocation
@@ -120,6 +121,13 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     event FarmDisabled(uint indexed farmId, uint indexed epoch);
     event VotesSetForRelic(uint indexed relicId, Vote[] votes);
     event IncentiveTokenWhiteListed(IERC20 indexed incentiveToken);
+    event IncentivesClaimedForFarm(
+        uint indexed relicId,
+        uint indexed farmId,
+        uint indexed epoch,
+        IERC20 incentiveToken,
+        address recipient
+    );
 
     // errors
     error NotApprovedOrOwner();
@@ -532,11 +540,12 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         uint epoch,
         IERC20 incentiveToken,
         address recipient
-    ) external nonReentrant {
+    ) external nonReentrant returns (uint) {
         _requireIsApprovedOrOwner(relicId);
         _requireIsWhiteListedIncentiveToken(incentiveToken);
-        if (farmId >= farms.length) revert FarmDoesNotExist();
         if (epoch > getCurrentEpochTimestamp()) revert IncentivesForEpochNotYetClaimable();
+        //TODO not adequate, should be "did exist at epoch"
+        if (farmId >= farms.length) revert FarmDoesNotExist();
 
         if (_incentiveClaims[epoch][farmId][address(incentiveToken)][relicId] == true) {
             revert IncentivesAlreadyClaimed();
@@ -552,10 +561,14 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         
         _incentiveClaims[epoch][farmId][address(incentiveToken)][relicId] = true;
 
-        //TODO: manage rounding and fix math
-        uint incentivesForRelic = incentivesForFarm * (relicVotesForFarm / totalVotesForFarm);
+        // This will always round down.
+        uint incentivesForRelic = incentivesForFarm * (relicVotesForFarm * ONE / totalVotesForFarm) / ONE;
 
         incentiveToken.safeTransfer(recipient, incentivesForRelic);
+
+        emit IncentivesClaimedForFarm(relicId, farmId, epoch, incentiveToken, recipient);
+
+        return incentivesForRelic;
     }
 
     function getFarmIncentivesForEpoch(

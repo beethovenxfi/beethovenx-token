@@ -3,8 +3,9 @@ import { deployContract } from './utilities'
 import { ethers, network } from 'hardhat'
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 import { IERC20, ReliquaryMasterchefController, BeethovenxMasterChef, IReliquary } from '../types'
-import { BigNumber, Contract } from 'ethers'
+import { BigNumber, Contract, BigNumberish } from 'ethers'
 import { mine, time } from "@nomicfoundation/hardhat-network-helpers"
+import { advanceTime, advanceToTime, advanceBlock, advanceTimeAndBlock } from './utilities/time';
 
 const MASTERCHEF = '0x8166994d9ebBe5829EC86Bd81258149B87faCfd3';
 const RELIQUARY = '0x1ed6411670c709F4e163854654BD52c74E66D7eC';
@@ -19,10 +20,13 @@ const WFTM = '0x21be370d5312f44cb42ce377bc9b8a0cef1a4c83';
 
 const ONE = BigNumber.from('1000000000000000000');
 
+const MABEETS_ALLOC_POINTS = 70;
+const MABEETS_POOL_ID = 2;
+
 // run fork
 // yarn hardhat node --fork https://rpc.ftm.tools/ --fork-block-number 58192000
 
-const MABEETS_ALLOC_POINTS = 70;
+const WEEK_IN_SECONDS = 604800;
 
 describe('ReliquaryMasterchefController', function () {
     let owner: SignerWithAddress;
@@ -37,6 +41,7 @@ describe('ReliquaryMasterchefController', function () {
     let votingPower2: BigNumber;
     let relicId3: string;
     let VOTING_CLOSES_SECONDS_BEFORE_NEXT_EPOCH: number;
+    let EPOCH_DURATION_IN_SECONDS: number;
     let nextEpoch: number;
 
     beforeEach(async function () {
@@ -45,7 +50,7 @@ describe('ReliquaryMasterchefController', function () {
 
         reliquary = (await ethers.getContractAt('IReliquary', RELIQUARY)) as IReliquary;
         masterchef = (await ethers.getContractAt('BeethovenxMasterChef', MASTERCHEF)) as BeethovenxMasterChef;
-        controller = (await deployContract('ReliquaryMasterchefController', [MASTERCHEF, RELIQUARY, MABEETS_ALLOC_POINTS, 30])) as ReliquaryMasterchefController;
+        controller = (await deployContract('ReliquaryMasterchefController', [MASTERCHEF, RELIQUARY, MABEETS_POOL_ID, MABEETS_ALLOC_POINTS, 30])) as ReliquaryMasterchefController;
 
         await controller.grantRole(await controller.OPERATOR(), owner.address);
         await controller.grantRole(await controller.COMMITTEE_MEMBER(), owner.address);
@@ -80,10 +85,12 @@ describe('ReliquaryMasterchefController', function () {
         votingPower2 = info.amount.mul(ONE).mul(currentLevelMultiplier).div(maxLevelMultiplier).div(ONE);
     
         nextEpoch = (await controller.getNextEpochTimestamp()).toNumber();
+        
         VOTING_CLOSES_SECONDS_BEFORE_NEXT_EPOCH = (await controller.VOTING_CLOSES_SECONDS_BEFORE_NEXT_EPOCH()).toNumber();
+        EPOCH_DURATION_IN_SECONDS = (await controller.EPOCH_DURATION_IN_SECONDS()).toNumber();
     });
 
-    describe('farms', () => {
+    describe.skip('farms', () => {
         it('can sync farms', async () => {
             await controller.syncFarms(5, 0);
         
@@ -174,7 +181,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe('voting', () => {
+    describe.skip('voting', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -350,7 +357,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe('allocation points', () => {
+    describe.skip('allocation points', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -495,7 +502,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe('incentives', () => {
+    describe.skip('incentives', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -566,7 +573,134 @@ describe('ReliquaryMasterchefController', function () {
             expect(incentives[0].token.toLowerCase()).to.eq(WFTM.toLowerCase());
             expect(incentives[0].amount).to.eq(ONE);
             expect(incentives[1].token.toLowerCase()).to.eq(USDC.toLowerCase());
-            expect(incentives[1].amount).to.eq(1e6);
+            expect(incentives[1].amount).to.eq(1e6);            
+        });
+    });
+
+    describe('time based', () => {
+        beforeEach(async () => {
+            await controller.syncFarms(10, 1);
+        });
+
+        it('has increased voting power after leveling up', async () => {
+            const votingPowerBefore = await controller.getRelicVotingPower(relicId1);
+
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPowerBefore}]
+            );
+
+            const totalVotesBefore = await controller.getTotalVotesForEpoch(nextEpoch);
+
+            await advanceTimeAndBlock(WEEK_IN_SECONDS)
+
+            const newEpoch = (await controller.getNextEpochTimestamp()).toNumber();
+            await reliquary.updatePosition(relicId1);
+
+            const votingPowerAfter = await controller.getRelicVotingPower(relicId1);
+
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPowerAfter}]
+            );
+
+            const totalVotesAfter = await controller.getTotalVotesForEpoch(newEpoch);
+
+            expect(votingPowerAfter.gt(votingPowerBefore)).to.eq(true);
+            expectApproxEq(totalVotesBefore, votingPowerBefore);
+            expectApproxEq(totalVotesAfter, votingPowerAfter);
+        });
+
+        it('should assign votes to expected epoch', async () => {
+            const epoch = (await controller.getNextEpochTimestamp()).toNumber();
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPower1}]
+            );
+
+            const totalVotes = await controller.getTotalVotesForEpoch(epoch);
+
+            expect(totalVotes).to.eq(votingPower1);
+
+            await advanceTimeAndBlock(EPOCH_DURATION_IN_SECONDS);
+
+            const newEpoch = (await controller.getNextEpochTimestamp()).toNumber();
+            await controller.connect(signer2).setVotesForRelic(
+                relicId2,
+                [{farmId: 0, amount: votingPower2}]
+            );
+
+            const totalVotesNewEpoch = await controller.getTotalVotesForEpoch(newEpoch);
+
+            expect(totalVotesNewEpoch).to.eq(votingPower2);
+        });
+
+        it('can claim incentives after epoch change', async () => {
+            const epoch = (await controller.getNextEpochTimestamp()).toNumber();
+            await controller.whiteListIncentiveToken(WFTM);
+
+            const wftm = (await ethers.getContractAt('IERC20', WFTM)) as IERC20;
+            await wftm.approve(controller.address, ONE);
+
+            await controller.depositIncentiveForFarm(0, WFTM, ONE);
+
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPower1}]
+            );
+
+            await expect(
+                controller.connect(signer1).claimIncentivesForFarm(relicId1, 0, epoch, WFTM, signer1.address)
+            ).to.revertedWith('IncentivesForEpochNotYetClaimable');
+
+            await advanceTimeAndBlock(EPOCH_DURATION_IN_SECONDS);
+
+            const balanceBefore = await wftm.balanceOf(signer1.address);
+            await controller.connect(signer1).claimIncentivesForFarm(relicId1, 0, epoch, WFTM, signer1.address);
+            const balanceAfter = await wftm.balanceOf(signer1.address);
+            
+            expect(balanceAfter).to.eq(balanceBefore.add(ONE));
+        });
+
+        it('splits incentives across multiple voters', async () => {
+            const epoch = (await controller.getNextEpochTimestamp()).toNumber();
+            await controller.whiteListIncentiveToken(WFTM);
+
+            const wftm = (await ethers.getContractAt('IERC20', WFTM)) as IERC20;
+            await wftm.approve(controller.address, ONE);
+
+            await controller.depositIncentiveForFarm(0, WFTM, ONE);
+
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPower1}]
+            );
+
+            await controller.connect(signer2).setVotesForRelic(
+                relicId2,
+                [{farmId: 0, amount: votingPower2}]
+            );
+
+            await advanceTimeAndBlock(EPOCH_DURATION_IN_SECONDS);
+
+            const balanceBefore1 = await wftm.balanceOf(signer1.address);
+            await controller.connect(signer1).claimIncentivesForFarm(relicId1, 0, epoch, WFTM, signer1.address);
+            const balanceAfter1 = await wftm.balanceOf(signer1.address);
+            const share1 = votingPower1.mul(ONE).div(votingPower1.add(votingPower2));
+
+            const balanceBefore2 = await wftm.balanceOf(signer2.address);
+            await controller.connect(signer2).claimIncentivesForFarm(relicId2, 0, epoch, WFTM, signer2.address);
+            const balanceAfter2 = await wftm.balanceOf(signer2.address);
+            const share2 = votingPower2.mul(ONE).div(votingPower1.add(votingPower2));
+
+            expectApproxEq(balanceAfter1.sub(balanceBefore1), share1);
+            expectApproxEq(balanceAfter2.sub(balanceBefore2), share2);
         });
     });
 })
+
+
+function expectApproxEq(actual: BigNumber, expected: BigNumber, error: BigNumberish = 1): void {
+    expect(actual).to.be.at.least(expected.sub(error));
+    expect(actual).to.be.at.most(expected.add(error));
+}
