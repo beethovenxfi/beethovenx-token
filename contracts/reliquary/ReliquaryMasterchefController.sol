@@ -61,7 +61,12 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     bytes32 public constant COMMITTEE_MEMBER = keccak256("COMMITTEE_MEMBER");
 
     IMasterChef public immutable masterChef;
+    // reliquary contract that hosts maBEETS
     IReliquary public immutable reliquary;
+    // The reliquary poolId for maBEETS
+    uint public immutable maBeetsPoolId;
+    LevelInfo private _maBeetsLevelInfo;
+    uint private immutable _maxLevelMultiplier;
 
     // 7 * 86400 seconds - all future times are rounded by week
     uint public constant EPOCH_DURATION_IN_SECONDS = 604800;
@@ -138,16 +143,28 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     error NoDuplicateAllocations();
     error FarmNotRegisteredForEpoch();
     error VotingForEpochClosed();
+    error RelicIsNotFromMaBeetsPool();
+    error InvalidEpoch();
 
-    constructor(IMasterChef _masterChef, IReliquary _reliquary, uint _maBeetsAllocPoints, uint _committeeAllocPoints) {
+    constructor(
+        IMasterChef _masterChef,
+        IReliquary _reliquary,
+        uint _maBeetsPoolId,
+        uint _maBeetsAllocPoints,
+        uint _committeeAllocPoints
+    ) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
         masterChef = _masterChef;
         reliquary = _reliquary;
+        maBeetsPoolId = _maBeetsPoolId;
 
         maBeetsAllocPointsAtEpoch.push(_maBeetsAllocPoints * ALLOC_PT_PRECISION);
         committeeAllocPointsAtEpoch.push(_committeeAllocPoints * ALLOC_PT_PRECISION);
         allocPointEpochs.push(getCurrentEpochTimestamp());
+
+        _maBeetsLevelInfo = reliquary.getLevelInfo(maBeetsPoolId);
+        _maxLevelMultiplier =_maBeetsLevelInfo.multipliers[_maBeetsLevelInfo.multipliers.length - 1];
     }
 
     /**
@@ -272,6 +289,19 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         
     }
 
+    function getRelicVotingPower(uint relicId) public view returns (uint) {
+        PositionInfo memory position = reliquary.getPositionForId(relicId);
+
+        if (position.poolId != maBeetsPoolId) revert RelicIsNotFromMaBeetsPool();
+        
+        // votingPower = currentLevelMultiplier / maxLevelMultiplier * amount
+        return position.amount
+            * MABEETS_PRECISION
+            * _maBeetsLevelInfo.multipliers[position.level]
+            / _maxLevelMultiplier
+            / MABEETS_PRECISION;
+    }
+
     /**
      * @dev Convenience function to set votes for several relics at once. Be careful of gas spending!
      */
@@ -305,27 +335,17 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         _requireIsApprovedOrOwner(relicId);
         _requireNoDuplicateVotes(votes);
 
+        // This will revert if the relic is not for the ma beets pool
+        uint votingPower = getRelicVotingPower(relicId);
+
         uint nextEpoch = getNextEpochTimestamp();
 
         // clear any existing votes for this relic.
         _clearPreviousVotes(relicId, nextEpoch);
 
-        PositionInfo memory position = reliquary.getPositionForId(relicId);
-        LevelInfo memory level = reliquary.getLevelInfo(position.poolId);
-
         uint[] memory relicVotes = new uint[](farms.length);
-        uint maxLevelMultiplier = level.multipliers[level.multipliers.length - 1];
         uint assignedAmount = 0;
 
-        // calculate the total voting power for this relic
-        // votingPower = currentLevelMultiplier / maxLevelMultiplier * amount
-        uint votingPower = 
-            position.amount
-            * MABEETS_PRECISION
-            * level.multipliers[position.level]
-            / maxLevelMultiplier
-            / MABEETS_PRECISION;
-        
         for (uint i = 0; i < votes.length; i++) {
             // keep track of the entire amount
             assignedAmount += votes[i].amount;
@@ -421,13 +441,15 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     }
 
     function _getAllocPointIdxForEpoch(uint epoch) private view returns (uint) {
+        // We work under the expectation that any state changing operations will be done for the most
+        // recent epochs. By starting from the end of the list, we reduce reads for state changing ops.
         for (uint i = allocPointEpochs.length - 1; i >= 0; i--) {
             if (allocPointEpochs[i] <= epoch) {
                 return i;
             }
         }
 
-        return allocPointEpochs.length - 1;
+        revert InvalidEpoch();
     }
 
     // Because of rounding, its possible for the allocations to add up to be slightly more than allocated.
@@ -577,6 +599,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return _incentives[epoch][farmId][address(incentiveToken)];
     }
 
+    /**
+     * @dev Whitelist an incentive token. Only whitelisted tokens can be deposited as incentives. 
+     * For the sake of simplicity, we do no support rebase tokens.
+     */
     function whiteListIncentiveToken(IERC20 incentiveToken) external onlyRole(OPERATOR) {
         if (_whiteListedIncentiveTokens.contains(address(incentiveToken))) revert IncentiveTokenAlreadyWhiteListed();
 
@@ -666,8 +692,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
         FarmStatus status = FarmStatus.DISABLED;
 
-        for (uint i = 0; i < _farmStatusEpochs[farmId].length; i++) {
-            if (_farmStatusEpochs[farmId][i] <= epoch) {
+        // we work under the expectation that any state changing operations will be done for the most
+        // recent epochs. By starting from the end of the list, we reduce reads for state changing ops.
+        for (uint i = _farmStatusEpochs[farmId].length - 1; i >= 0; i--) {
+            if (_farmStatusEpochs[farmId][i] >= epoch) {
                 status = _farmStatuses[farmId][i];
             }
         }
