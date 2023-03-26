@@ -77,7 +77,6 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     uint private constant MABEETS_PRECISION = 1e18;
     uint private constant ALLOC_PT_PRECISION = 1e3;
-    uint private constant ONE = 1e18;
 
     // We store allocation point history as parallel arrays. This allows us to determine the allocation points
     // at any epoch in the past. For simplicity, we keep both arrays the same length, so any change to one allocation
@@ -562,7 +561,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         _incentiveClaims[epoch][farmId][address(incentiveToken)][relicId] = true;
 
         // This will always round down.
-        uint incentivesForRelic = incentivesForFarm * (relicVotesForFarm * ONE / totalVotesForFarm) / ONE;
+        uint incentivesForRelic = 
+            incentivesForFarm
+            * (relicVotesForFarm * MABEETS_PRECISION / totalVotesForFarm)
+            / MABEETS_PRECISION;
 
         incentiveToken.safeTransfer(recipient, incentivesForRelic);
 
