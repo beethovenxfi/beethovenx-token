@@ -254,14 +254,19 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit FarmsSynced(lastFarmId, initialStatus);
     }
 
+    /**
+     * @dev Returns the historical statuses for the given farmId. Each status has a corresponding epoch that represents
+     * the epoch during which the status changed.
+     */
     function getFarmStatuses(uint farmId) public view returns (FarmStatus[] memory statuses, uint[] memory epochs) {
         statuses = _farmStatuses[farmId];
         epochs = _farmStatusEpochs[farmId];
     }
 
+    /**
+     * @dev Determines the status of a farm at a specific epoch
+     */
     function getFarmStatusForEpoch(uint farmId, uint epoch) external view returns (FarmStatus) {
-        if (_farmStatusEpochs[farmId][0] > epoch) revert FarmNotRegisteredForEpoch();
-
         return _getFarmStatusForEpoch(farmId, epoch);
     }
 
@@ -296,14 +301,17 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit FarmDisabled(farmId, epoch);
     }
 
-
-    // we assume the farmId has already been verified to exist and that the status change is valid
+    /**
+     * @dev
+     * We assume the farmId has already been verified to exist and that the status change is valid.
+     */
     function _addStatusToFarm(uint farmId, FarmStatus status, uint epoch) private {
         uint numStatuses = _farmStatuses[farmId].length;
 
         if (epoch == _farmStatusEpochs[farmId][numStatuses - 1]) {
             _farmStatuses[farmId][numStatuses - 1] = status;
         } else {
+            // This approach is highly inefficient, but can't think of a better way to store this data.
             FarmStatus[] memory statuses = new FarmStatus[](numStatuses + 1);
             uint[] memory epochs = new uint[](numStatuses + 1);
             
@@ -321,6 +329,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         
     }
 
+    /**
+     * @dev The voting power of a given maBEETS relic
+     */
     function getRelicVotingPower(uint relicId) public view returns (uint) {
         PositionInfo memory position = reliquary.getPositionForId(relicId);
 
@@ -357,13 +368,11 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     /**
      * @dev Internal handling for setting votes for a relic, nonReentrant modifier is not used.
-     * All votes for a relic must be submitted at once. Submitting another set of votes for a given
-     * relic will invalidate the existing votes.
+     * This operation is additive to allow for multiple vote submissions for a single relic.
+     * To update a previous vote, pass the desired value with the appropriate farmId. Passing a 0
+     * value will effectively unset the previous vote for the given farmId.
      */
     function _setVotesForRelic(uint relicId, Vote[] memory votes) internal {
-        // TODO: It may be necessary to allow for multiple transactions, if the number of votes gets too big to be
-        // handled by a single block.
-
         _requireIsApprovedOrOwner(relicId);
         _requireNoDuplicateVotes(votes);
 
@@ -405,11 +414,6 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
         for (uint i = 0; i < farms.length; i++) {
             totalEpochVotes += _epochVotes[epoch][i];
-
-            // TODO: this is more correct, but will likely lead to out of gas errors
-            /* if (_getFarmStatusForEpoch(i, epoch) == FarmStatus.ENABLED) {
-                totalEpochVotes += _epochVotes[epoch][i];
-            } */
         }
 
         return totalEpochVotes;
@@ -441,22 +445,30 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return votes;
     }
 
-    function setMaBeetsAllocPoints(uint maBeetsAllocPoints) external onlyRole(OPERATOR) {
+    /**
+     * @dev Update the number of allocation points controlled by maBEETS voters. This value should
+     * be provided in raw form (whole number ie: 70 alloc points = 70)
+     */
+    function setMaBeetsAllocPoints(uint maBeetsAllocPointsRaw) external onlyRole(OPERATOR) {
         _updateAllocationPoints(
-            maBeetsAllocPoints * ALLOC_PT_PRECISION,
+            maBeetsAllocPointsRaw * ALLOC_PT_PRECISION,
             committeeAllocPointsAtEpoch[allocPointEpochs.length - 1]
         );
 
-        emit MaBeetsAllocationPointsSet(maBeetsAllocPoints, getNextEpochTimestamp());
+        emit MaBeetsAllocationPointsSet(maBeetsAllocPointsRaw, getNextEpochTimestamp());
     }
 
-    function setCommitteeAllocPoints(uint committeeAlocPoints) external onlyRole(OPERATOR) {
+    /**
+     * @dev Update the number of allocation points controlled by the committee. This value should
+     * be provided in raw form (whole number ie: 70 alloc points = 70)
+     */
+    function setCommitteeAllocPoints(uint committeeAlocPointsRaw) external onlyRole(OPERATOR) {
         _updateAllocationPoints(
             maBeetsAllocPointsAtEpoch[allocPointEpochs.length - 1],
-            committeeAlocPoints * ALLOC_PT_PRECISION
+            committeeAlocPointsRaw * ALLOC_PT_PRECISION
         );
 
-        emit CommitteeAllocationPointsSet(committeeAlocPoints, getNextEpochTimestamp());
+        emit CommitteeAllocationPointsSet(committeeAlocPointsRaw, getNextEpochTimestamp());
     }
 
     function _updateAllocationPoints(uint maBeetsAllocPoints, uint committeeAllocPoints) private {
