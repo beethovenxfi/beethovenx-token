@@ -479,7 +479,6 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         uint[] memory allocations = new uint[](farms.length);
         uint totalEpochVotes = getTotalVotesForEpoch(epoch);
         uint maBeetsAllocPoints = getMaBeetsAllocPointsForEpoch(epoch);
-        uint[] memory caps = getMaBeetsAllocPointCapsForEpoch(epoch);
         uint totalUncappedVotes = totalEpochVotes;
         uint totalUncappedAllocPoints = maBeetsAllocPoints;
 
@@ -488,22 +487,20 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         // first assign any capped alloc points, keeping track of how many uncapped votes and alloc points are left
         for (uint i = 0; i < farms.length; i++) {
             if (
-                i < caps.length
-                && caps[i] > 0
-                && _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes > caps[i]
+                _maBeetsAllocPointCaps[epoch][i] > 0
+                && _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes > _maBeetsAllocPointCaps[epoch][i]
             ) {
-                allocations[i] = caps[i];
+                allocations[i] = _maBeetsAllocPointCaps[epoch][i];
                 totalUncappedVotes -= _epochVotes[epoch][i];
-                totalUncappedAllocPoints -= caps[i];
+                totalUncappedAllocPoints -= _maBeetsAllocPointCaps[epoch][i];
             }
         }
 
         // then allocate all uncapped points based on percent of uncapped votes
         for (uint i = 0; i < farms.length; i++) {
             if (
-                i >= caps.length
-                || caps[i] == 0
-                || _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes <= caps[i]
+                _maBeetsAllocPointCaps[epoch][i] == 0
+                || _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes <= _maBeetsAllocPointCaps[epoch][i]
             ) {
                 allocations[i] = _epochVotes[epoch][i] * totalUncappedAllocPoints / totalUncappedVotes;
             }
@@ -589,7 +586,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
-    function getMaBeetsAllocPointCapsForEpoch(uint epoch) public view returns(uint[] memory) {
+    function getMaBeetsAllocPointCapsForEpoch(uint epoch) external view returns(uint[] memory) {
         uint[] memory caps = new uint[](farms.length);
 
         for (uint i = 0; i < farms.length; i++) {
