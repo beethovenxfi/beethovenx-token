@@ -90,7 +90,7 @@ describe('ReliquaryMasterchefController', function () {
         EPOCH_DURATION_IN_SECONDS = (await controller.EPOCH_DURATION_IN_SECONDS()).toNumber();
     });
 
-    describe.skip('farms', () => {
+    describe('farms', () => {
         it('can sync farms', async () => {
             await controller.syncFarms(5, 0);
         
@@ -181,7 +181,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe.skip('voting', () => {
+    describe('voting', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -365,7 +365,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe.skip('allocation points', () => {
+    describe('allocation points', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -534,7 +534,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe.skip('incentives', () => {
+    describe('incentives', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
