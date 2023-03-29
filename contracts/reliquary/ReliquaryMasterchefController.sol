@@ -24,8 +24,6 @@ import "../interfaces/IReliquary.sol";
 import "../interfaces/IMasterChef.sol";
 import "../interfaces/IBalancerPool.sol";
 
-import "hardhat/console.sol";
-
 
 enum FarmStatus { DISABLED, ENABLED }
 
@@ -471,6 +469,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit CommitteeAllocationPointsSet(committeeAlocPointsRaw, getNextEpochTimestamp());
     }
 
+    /**
+     * @dev Internal function used to update allocation points. To keep arrays the same length,
+     * any update to one value creates a new entry for both values.
+     */
     function _updateAllocationPoints(uint maBeetsAllocPoints, uint committeeAllocPoints) private {
         if (allocPointEpochs[allocPointEpochs.length - 1] == getNextEpochTimestamp()) {
             maBeetsAllocPointsAtEpoch[allocPointEpochs.length - 1] = maBeetsAllocPoints;
