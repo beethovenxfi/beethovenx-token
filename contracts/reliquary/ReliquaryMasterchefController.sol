@@ -599,7 +599,15 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return allocations;
     }
 
-    function setMaBeetsAllocPointCapsForEpoch(FarmAllocation[] memory input) external onlyRole(COMMITTEE_MEMBER) {
+    /**
+     * @dev The committee can set caps for specific farms, limiting the maximum number of allocation points maBEETS
+     * voters can allocate to a given farm. The allocation values are expected in scaled form (1 = 1000).
+     */
+    function setMaBeetsAllocPointCapsForEpoch(FarmAllocation[] memory input)
+        external
+        nonReentrant
+        onlyRole(COMMITTEE_MEMBER)
+    {
         _requireNoDuplicateAllocations(input);
 
         uint epoch = getNextEpochTimestamp();
@@ -612,7 +620,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
-    function reuseCurrentMaBeetsAllocPointCapsForNextEpoch() external onlyRole(COMMITTEE_MEMBER) {
+    /**
+     * @dev Reuse the allocation point caps from the current epoch for the next epoch.
+     */
+    function reuseCurrentMaBeetsAllocPointCapsForNextEpoch() external nonReentrant onlyRole(COMMITTEE_MEMBER) {
         uint currentEpoch = getCurrentEpochTimestamp();
         uint nextEpoch = getNextEpochTimestamp();
 
@@ -621,6 +632,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
+    /**
+     * @dev The allocation point caps for all farms for a given epoch
+     */
     function getMaBeetsAllocPointCapsForEpoch(uint epoch) external view returns(uint[] memory) {
         uint[] memory caps = new uint[](farms.length);
 
@@ -631,6 +645,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return caps;
     }
 
+    /**
+     * @dev Deposit an incentive token amount for a given farm. The incentive will always be allocated to the nextEpoch.
+     */
     function depositIncentiveForFarm(uint farmId, IERC20 incentiveToken, uint incentiveAmount) external nonReentrant {
         _requireFarmValidAndNotDisabled(farmId);
         _requireIsWhiteListedIncentiveToken(incentiveToken);
@@ -645,6 +662,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit IncentiveDeposited(nextEpoch, farmId, address(incentiveToken), incentiveAmount);
     }
 
+    /**
+     * @dev Once the epoch ticks over, incentives for the current epoch are claimable. Allow relic owners
+     * that voted for farms to claim any incentive tokens for the given farm.
+     */
     function claimIncentivesForFarm(
         uint relicId,
         uint farmId,
