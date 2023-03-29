@@ -78,6 +78,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     uint public constant VOTING_CLOSES_SECONDS_BEFORE_NEXT_EPOCH = 86400;
 
     uint private constant MABEETS_PRECISION = 1e18;
+    // We treat alloc points as having 3 digits of precision to allow for sub point allocations that occur
+    // based on maBEETS votes being allocated across many different farms. We recognize that the masterchef
+    // itself does not specifically provide digits of precision, but we simulate this through larger numbers of
+    // total alloc points.
     uint private constant ALLOC_PT_PRECISION = 1e3;
 
     // We store allocation point history as parallel arrays. This allows us to determine the allocation points
@@ -91,14 +95,16 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     // An array of all masterchef farms. Triggering syncFarms will create references for any newly created farms.
     Farm[] public farms;
-    // We store status history as two parallel arrays, this allows us to determine to state of a farm at any
+
+    // We store farm status history as two parallel arrays, this allows us to determine to state of a farm at any
     // epoch in the past.
     FarmStatus[][] private _farmStatuses;
     uint[][] private _farmStatusEpochs;
 
-    // Here we track the votes per relic.
+    // _relicVotes tracks each relic's votes
     // epoch -> relicId -> farmId -> voteAmount
     mapping(uint => mapping(uint => mapping(uint => uint))) private _relicVotes;
+    // we additionally keep a running of total votes for each epoch on each vote
     // epoch -> farmId -> amount
     mapping(uint => mapping(uint => uint)) private _epochVotes;
     // epoch -> farmId -> allocPoints
@@ -352,19 +358,21 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         uint votingPower = getRelicVotingPower(relicId);
 
         uint nextEpoch = getNextEpochTimestamp();
+        uint assignedAmount = 0;
         uint i;
-
-        // clear any existing votes for this relic.
-        _clearPreviousVotes(relicId, nextEpoch);
 
         for (i = 0; i < votes.length; i++) {
             _requireFarmValidAndNotDisabled(votes[i].farmId);
+
+            // If this vote overwrites an existing vote, we first subtract the existing value from the total votes
+            if (_relicVotes[nextEpoch][relicId][votes[i].farmId] > 0) {
+                 _epochVotes[nextEpoch][votes[i].farmId] -= _relicVotes[nextEpoch][relicId][votes[i].farmId];
+            }
 
             _epochVotes[nextEpoch][votes[i].farmId] = _epochVotes[nextEpoch][votes[i].farmId] + votes[i].amount;
             _relicVotes[nextEpoch][relicId][votes[i].farmId] =  votes[i].amount;
         }
 
-        uint assignedAmount = 0;
 
         for (i = 0; i < farms.length; i++) {
             assignedAmount += _relicVotes[nextEpoch][relicId][i];
@@ -768,12 +776,6 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     function _requireIsWithinVotingPeriod() private view {
         if (getNextEpochTimestamp() - block.timestamp <= VOTING_CLOSES_SECONDS_BEFORE_NEXT_EPOCH) {
              revert VotingForEpochClosed();
-        }
-    }
-
-    function _clearPreviousVotes(uint relicId, uint nextEpoch) private {
-        for (uint i = 0; i < farms.length; i++) {
-            _epochVotes[nextEpoch][i] -= _relicVotes[nextEpoch][relicId][i];
         }
     }
 
