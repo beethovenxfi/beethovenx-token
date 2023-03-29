@@ -447,9 +447,9 @@ describe('ReliquaryMasterchefController', function () {
 
         it('can set committee allocation points', async () => {
             await controller.setCommitteeFarmAllocationsForEpoch([
-                {farmId: 0, allocPoints: 10},
-                {farmId: 1, allocPoints: 10},
-                {farmId: 2, allocPoints: 10},
+                {farmId: 0, allocPoints: 10000},
+                {farmId: 1, allocPoints: 10000},
+                {farmId: 2, allocPoints: 10000},
             ]);
 
             const allocations = await controller.getCommitteeFarmAllocationsForEpoch(nextEpoch);
@@ -472,10 +472,10 @@ describe('ReliquaryMasterchefController', function () {
 
         it('reverts when provided more alloc points than controlled', async () => {
             await expect(controller.setCommitteeFarmAllocationsForEpoch([
-                {farmId: 0, allocPoints: 10},
-                {farmId: 1, allocPoints: 10},
-                {farmId: 2, allocPoints: 10},
-                {farmId: 3, allocPoints: 10},
+                {farmId: 0, allocPoints: 10000},
+                {farmId: 1, allocPoints: 10000},
+                {farmId: 2, allocPoints: 10000},
+                {farmId: 3, allocPoints: 10000},
             ])).to.revertedWith('CommitteeAllocationGreaterThanControlled');
         });
 
@@ -489,9 +489,9 @@ describe('ReliquaryMasterchefController', function () {
             );
 
             await controller.setCommitteeFarmAllocationsForEpoch([
-                {farmId: 0, allocPoints: 10},
-                {farmId: 1, allocPoints: 10},
-                {farmId: 2, allocPoints: 10},
+                {farmId: 0, allocPoints: 10000},
+                {farmId: 1, allocPoints: 10000},
+                {farmId: 2, allocPoints: 10000},
             ]);
 
             const allocations = await controller.getFarmAllocationsForEpoch(nextEpoch);
@@ -499,6 +499,30 @@ describe('ReliquaryMasterchefController', function () {
             expect(allocations[0]).to.eq('45000');
             expect(allocations[1]).to.eq('10000');
             expect(allocations[2]).to.eq('45000');
+        });
+
+        it('returns the correct number of allocation points when a farm is capped', async () => {
+            await controller.setMaBeetsAllocPointCapsForEpoch([
+                {farmId: 0, allocPoints: 2000},
+                {farmId: 1, allocPoints: 3500}
+            ]);
+
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [
+                    {farmId: 0, amount: votingPower1.div('4')},
+                    {farmId: 1, amount: votingPower1.div('4')},
+                    {farmId: 2, amount: votingPower1.div('4')},
+                    {farmId: 3, amount: votingPower1.div('4')}
+                ]
+            );
+
+            const allocations = await controller.getMaBeetsFarmAllocationsForEpoch(nextEpoch);
+
+            expect(allocations[0]).to.eq('2000');
+            expect(allocations[1]).to.eq('3500');
+            expect(allocations[2]).to.eq('32250');
+            expect(allocations[3]).to.eq('32250');
         });
     });
 

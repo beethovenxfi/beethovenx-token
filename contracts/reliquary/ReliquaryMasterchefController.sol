@@ -42,7 +42,7 @@ struct Vote {
 
 struct FarmAllocation {
     uint farmId;
-    // these should be provided in normal form (ie without precision added)
+    // these should be provided in scaled form (ie with precision added)
     uint allocPoints;
 }
 
@@ -99,10 +99,13 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     mapping(uint => mapping(uint => uint[])) private _relicVotes;
     // epoch -> farmId -> amount
     mapping(uint => mapping(uint => uint)) private _epochVotes;
-    // epoch -> farmAllocations
-    mapping(uint => uint[]) private _committeeEpochAllocations;
+    // epoch -> farmId -> allocPoints
+    mapping(uint => mapping(uint => uint)) private _committeeEpochAllocations;
     // epoch -> allocationsPointsSet
     mapping(uint => bool) private _allocationPointsSetForEpoch;
+    // epoch -> maBeetsAllocPointCaps, a value of 0 is treated as uncapped.
+    // If the desire is to set a cap of 0, disable the farm.
+    mapping(uint => uint[]) private _maBeetsAllocPointCaps;
 
     // epoch -> farmId -> incentiveToken -> amount
     mapping(uint => mapping(uint => mapping(address => uint))) private _incentives;
@@ -137,6 +140,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     error NoNewFarmsToSync();
     error ArrayLengthMismatch();
     error CommitteeAllocationGreaterThanControlled();
+    error CommitteeAllocationsNotSetForEpoch();
     error AllocationPointsAlreadySetForCurrentEpoch();
     error ZeroAmount();
     error IncentiveTokenAlreadyWhiteListed();
@@ -447,6 +451,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return committeeAllocPointsAtEpoch[_getAllocPointIdxForEpoch(epoch)];
     }
 
+    function getTotalAllocPointsForEpoch(uint epoch) public view returns (uint) {
+        return getMaBeetsAllocPointsForEpoch(epoch) + getComitteeAllocPointsForEpoch(epoch);
+    }
+
     function _getAllocPointIdxForEpoch(uint epoch) private view returns (uint) {
         // We work under the expectation that any state changing operations will be done for the most
         // recent epochs. By starting from the end of the list, we reduce reads for state changing ops.
@@ -464,44 +472,72 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     function getMaBeetsFarmAllocationsForEpoch(uint epoch) public view returns (uint[] memory) {
         uint[] memory allocations = new uint[](farms.length);
         uint totalEpochVotes = getTotalVotesForEpoch(epoch);
-        uint totalAllocations = 0;
         uint maBeetsAllocPoints = getMaBeetsAllocPointsForEpoch(epoch);
+        uint[] memory caps = getMaBeetsAllocPointCapsForEpoch(epoch);
+        uint totalUncappedVotes = totalEpochVotes;
+        uint totalUncappedAllocPoints = maBeetsAllocPoints;
 
         if (totalEpochVotes == 0) revert NoVotesForEpoch();
 
+        // first assign any capped alloc points, keeping track of how many uncapped votes and alloc points are left
         for (uint i = 0; i < farms.length; i++) {
-            allocations[i] = _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes;
-            totalAllocations += allocations[i];
+            if (
+                caps.length >= i + 1
+                && caps[i] > 0
+                && _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes > caps[i]
+            ) {
+                allocations[i] = caps[i];
+                totalUncappedVotes -= _epochVotes[epoch][i];
+                totalUncappedAllocPoints -= caps[i];
+            }
+        }
+
+        // then allocate all uncapped points based on percent of uncapped votes
+        for (uint i = 0; i < farms.length; i++) {
+            if (
+                caps.length < i + 1
+                || caps[i] == 0
+                || _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes <= caps[i]
+            ) {
+                allocations[i] = _epochVotes[epoch][i] * totalUncappedAllocPoints / totalUncappedVotes;
+            }
         }
 
         return allocations;
     }
 
-    function setCommitteeFarmAllocationsForEpoch(
-        FarmAllocation[] memory allocations
-    ) external onlyRole(COMMITTEE_MEMBER) {
+    function setCommitteeFarmAllocationsForEpoch(FarmAllocation[] memory allocations) 
+        external
+        onlyRole(COMMITTEE_MEMBER)
+    {
         _requireNoDuplicateAllocations(allocations);
 
         uint epoch = getNextEpochTimestamp();
-        uint[] memory committeeAllocations = new uint[](farms.length);
         uint totalAllocPoints = 0;
 
         for (uint i = 0; i < allocations.length; i++) {
             _requireFarmValidAndNotDisabled(allocations[i].farmId);
 
-            // committee allocation points are expect to be provided in normal form (whole numbers), we apply
-            // the additional precision on the input amounts.
-            committeeAllocations[allocations[i].farmId] = allocations[i].allocPoints * ALLOC_PT_PRECISION;
-            totalAllocPoints += committeeAllocations[allocations[i].farmId];
+            // allocation points are expect to be provided with 3 digits of precision (1000 = 1)
+            _committeeEpochAllocations[epoch][allocations[i].farmId] = allocations[i].allocPoints;
+            totalAllocPoints += allocations[i].allocPoints;
         }
 
         if (totalAllocPoints > getComitteeAllocPointsForEpoch(epoch)) revert CommitteeAllocationGreaterThanControlled();
-
-        _committeeEpochAllocations[epoch] = committeeAllocations;
     }
 
-    function getCommitteeFarmAllocationsForEpoch(uint epoch) external view returns (uint[] memory) {
-        return _committeeEpochAllocations[epoch];
+    function getCommitteeFarmAllocationForEpoch(uint epoch, uint farmId) public view returns (uint) {
+        return _committeeEpochAllocations[epoch][farmId];
+    }
+
+    function getCommitteeFarmAllocationsForEpoch(uint epoch) public view returns (uint[] memory) {
+        uint[] memory allocations = new uint[](farms.length);
+
+        for (uint i = 0; i < farms.length; i++) {
+            allocations[i] = _committeeEpochAllocations[epoch][i];
+        }
+
+        return allocations;
     }
 
     function getFarmAllocationsForEpoch(uint epoch) public view returns (uint[] memory) {
@@ -509,14 +545,44 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         uint[] memory maBeetsAllocations = getMaBeetsFarmAllocationsForEpoch(epoch);
         uint maBeetsAllocPoints = getMaBeetsAllocPointsForEpoch(epoch);
         uint committeeAllocPoints = getComitteeAllocPointsForEpoch(epoch);
+        uint totalCommitteeAllocations = 0;
 
         for (uint i = 0; i < farms.length; i++) {
-            //TODO this is not correct when points change over time, would need to store point history
-            allocations[i] = committeeAllocPoints == 0 ? 0 : _committeeEpochAllocations[epoch][i];
-            allocations[i] += maBeetsAllocPoints == 0 ? 0 : maBeetsAllocations[i];
+            allocations[i] = maBeetsAllocPoints == 0 ? 0 : maBeetsAllocations[i];
+            allocations[i] += committeeAllocPoints == 0 ? 0 : _committeeEpochAllocations[epoch][i];
+
+            totalCommitteeAllocations += _committeeEpochAllocations[epoch][i];
+        }
+
+        if (committeeAllocPoints > 0 && totalCommitteeAllocations == 0) {
+             revert CommitteeAllocationsNotSetForEpoch();
         }
 
         return allocations;
+    }
+
+    function setMaBeetsAllocPointCapsForEpoch(FarmAllocation[] memory input) external onlyRole(COMMITTEE_MEMBER) {
+        _requireNoDuplicateAllocations(input);
+
+        uint epoch = getNextEpochTimestamp();
+        uint[] memory allocPointCaps = new uint[](farms.length);
+
+        for (uint i = 0; i < input.length; i++) {
+            if (input[i].farmId >= farms.length) revert FarmDoesNotExist();
+
+            // allocation points are expect to be provided with 3 digits of precision (1000 = 1)
+            allocPointCaps[input[i].farmId] = input[i].allocPoints;
+        }
+
+        _maBeetsAllocPointCaps[epoch] = allocPointCaps;
+    }
+
+    function reuseCurrentMaBeetsAllocPointCapsForNextEpoch() external onlyRole(COMMITTEE_MEMBER) {
+        _maBeetsAllocPointCaps[getNextEpochTimestamp()] = _maBeetsAllocPointCaps[getCurrentEpochTimestamp()];
+    }
+
+    function getMaBeetsAllocPointCapsForEpoch(uint epoch) public view returns(uint[] memory) {
+        return _maBeetsAllocPointCaps[epoch];
     }
 
     function depositIncentiveForFarm(uint farmId, IERC20 incentiveToken, uint incentiveAmount) external nonReentrant {
