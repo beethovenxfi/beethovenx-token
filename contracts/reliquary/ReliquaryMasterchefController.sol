@@ -95,17 +95,17 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     uint[][] private _farmStatusEpochs;
 
     // Here we track the votes per relic.
-    // epoch -> relicId -> votes
-    mapping(uint => mapping(uint => uint[])) private _relicVotes;
+    // epoch -> relicId -> farmId -> voteAmount
+    mapping(uint => mapping(uint => mapping(uint => uint))) private _relicVotes;
     // epoch -> farmId -> amount
     mapping(uint => mapping(uint => uint)) private _epochVotes;
     // epoch -> farmId -> allocPoints
     mapping(uint => mapping(uint => uint)) private _committeeEpochAllocations;
     // epoch -> allocationsPointsSet
     mapping(uint => bool) private _allocationPointsSetForEpoch;
-    // epoch -> maBeetsAllocPointCaps, a value of 0 is treated as uncapped.
+    // epoch -> farmId -> maBeetsAllocPointCap, a value of 0 is treated as uncapped.
     // If the desire is to set a cap of 0, disable the farm.
-    mapping(uint => uint[]) private _maBeetsAllocPointCaps;
+    mapping(uint => mapping(uint => uint)) private _maBeetsAllocPointCaps;
 
     // epoch -> farmId -> incentiveToken -> amount
     mapping(uint => mapping(uint => mapping(address => uint))) private _incentives;
@@ -350,28 +350,26 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         uint votingPower = getRelicVotingPower(relicId);
 
         uint nextEpoch = getNextEpochTimestamp();
+        uint i;
 
         // clear any existing votes for this relic.
         _clearPreviousVotes(relicId, nextEpoch);
 
-        uint[] memory relicVotes = new uint[](farms.length);
-        uint assignedAmount = 0;
-
-        for (uint i = 0; i < votes.length; i++) {
-            // keep track of the entire amount
-            assignedAmount += votes[i].amount;
-
+        for (i = 0; i < votes.length; i++) {
             _requireFarmValidAndNotDisabled(votes[i].farmId);
 
             _epochVotes[nextEpoch][votes[i].farmId] = _epochVotes[nextEpoch][votes[i].farmId] + votes[i].amount;
-            relicVotes[votes[i].farmId] = votes[i].amount;
+            _relicVotes[nextEpoch][relicId][votes[i].farmId] =  votes[i].amount;
+        }
+
+        uint assignedAmount = 0;
+
+        for (i = 0; i < farms.length; i++) {
+            assignedAmount += _relicVotes[nextEpoch][relicId][i];
         }
 
         // if the user submitted votes exceed the total voting power for this relic, reject
         if (assignedAmount > votingPower) revert AmountExceedsVotingPower();
-
-        // store the votes for this relic.
-        _relicVotes[nextEpoch][relicId] = relicVotes; 
 
         emit VotesSetForRelic(relicId, votes);
     }
@@ -398,7 +396,13 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev The votes cast by a relic for a given epoch.
      */
     function getRelicVotesForEpoch(uint relicId, uint epoch) external view returns (uint[] memory) {
-        return _relicVotes[epoch][relicId];
+        uint[] memory votes = new uint[](farms.length);
+
+        for (uint i = 0; i < farms.length; i++) {
+            votes[i] = _relicVotes[epoch][relicId][i];
+        }
+
+        return votes;
     }
 
     /**
@@ -565,24 +569,32 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         _requireNoDuplicateAllocations(input);
 
         uint epoch = getNextEpochTimestamp();
-        uint[] memory allocPointCaps = new uint[](farms.length);
 
         for (uint i = 0; i < input.length; i++) {
             if (input[i].farmId >= farms.length) revert FarmDoesNotExist();
 
             // allocation points are expect to be provided with 3 digits of precision (1000 = 1)
-            allocPointCaps[input[i].farmId] = input[i].allocPoints;
+            _maBeetsAllocPointCaps[epoch][input[i].farmId] = input[i].allocPoints;
         }
-
-        _maBeetsAllocPointCaps[epoch] = allocPointCaps;
     }
 
     function reuseCurrentMaBeetsAllocPointCapsForNextEpoch() external onlyRole(COMMITTEE_MEMBER) {
-        _maBeetsAllocPointCaps[getNextEpochTimestamp()] = _maBeetsAllocPointCaps[getCurrentEpochTimestamp()];
+        uint currentEpoch = getCurrentEpochTimestamp();
+        uint nextEpoch = getNextEpochTimestamp();
+
+        for (uint i = 0; i < farms.length; i++) {
+            _maBeetsAllocPointCaps[nextEpoch][i] = _maBeetsAllocPointCaps[currentEpoch][i];
+        }
     }
 
     function getMaBeetsAllocPointCapsForEpoch(uint epoch) public view returns(uint[] memory) {
-        return _maBeetsAllocPointCaps[epoch];
+        uint[] memory caps = new uint[](farms.length);
+
+        for (uint i = 0; i < farms.length; i++) {
+            caps[i] = _maBeetsAllocPointCaps[epoch][i];
+        }
+
+        return caps;
     }
 
     function depositIncentiveForFarm(uint farmId, IERC20 incentiveToken, uint incentiveAmount) external nonReentrant {
@@ -761,10 +773,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     }
 
     function _clearPreviousVotes(uint relicId, uint nextEpoch) private {
-        uint[] memory votes = _relicVotes[nextEpoch][relicId]; 
-
-        for (uint i = 0; i < votes.length; i++) {
-            _epochVotes[nextEpoch][i] = _epochVotes[nextEpoch][i] - votes[i];
+        for (uint i = 0; i < farms.length; i++) {
+            _epochVotes[nextEpoch][i] -= _relicVotes[nextEpoch][relicId][i];
         }
     }
 

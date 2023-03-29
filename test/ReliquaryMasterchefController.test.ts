@@ -90,7 +90,7 @@ describe('ReliquaryMasterchefController', function () {
         EPOCH_DURATION_IN_SECONDS = (await controller.EPOCH_DURATION_IN_SECONDS()).toNumber();
     });
 
-    describe.skip('farms', () => {
+    describe('farms', () => {
         it('can sync farms', async () => {
             await controller.syncFarms(5, 0);
         
@@ -181,7 +181,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe.skip('voting', () => {
+    describe('voting', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -213,7 +213,11 @@ describe('ReliquaryMasterchefController', function () {
 
             await controller.connect(signer1).setVotesForRelic(
                 relicId1,
-                [{farmId: 2, amount: votingPower1.div('2')}]
+                [
+                    {farmId: 0, amount: 0},
+                    {farmId: 1, amount: 0},
+                    {farmId: 2, amount: votingPower1.div('2')}
+                ]
             );
 
             const votes = await controller.getRelicVotesForEpoch(relicId1, nextEpoch);
@@ -332,7 +336,11 @@ describe('ReliquaryMasterchefController', function () {
 
             await controller.connect(signer1).setVotesForRelic(
                 relicId1,
-                [{farmId: 1, amount: votingPower1}]
+                [
+                    {farmId: 0, amount: 0},
+                    {farmId: 1, amount: votingPower1},
+                    {farmId: 2, amount: 0},
+                ]
             );
 
             const epochVotes = await controller.getEpochVotes(nextEpoch);
@@ -357,7 +365,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe.skip('allocation points', () => {
+    describe('allocation points', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -526,7 +534,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe.skip('incentives', () => {
+    describe('incentives', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -719,6 +727,24 @@ describe('ReliquaryMasterchefController', function () {
 
             expectApproxEq(balanceAfter1.sub(balanceBefore1), share1);
             expectApproxEq(balanceAfter2.sub(balanceBefore2), share2);
+        });
+
+        it('can carry over allocation caps from the previous epoch', async () => {
+            await controller.setMaBeetsAllocPointCapsForEpoch([
+                {farmId: 0, allocPoints: 2000},
+                {farmId: 1, allocPoints: 3500}
+            ]);
+
+            await advanceTimeAndBlock(EPOCH_DURATION_IN_SECONDS);
+            const nextEpoch = await controller.getNextEpochTimestamp();
+
+            const before = await controller.getMaBeetsAllocPointCapsForEpoch(nextEpoch);
+            
+            await controller.reuseCurrentMaBeetsAllocPointCapsForNextEpoch();
+
+            const after = await controller.getMaBeetsAllocPointCapsForEpoch(nextEpoch);
+
+            
         });
     });
 })
