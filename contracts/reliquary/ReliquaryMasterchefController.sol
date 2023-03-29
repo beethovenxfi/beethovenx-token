@@ -191,7 +191,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         allocPointEpochs.push(getCurrentEpochTimestamp());
 
         _maBeetsLevelInfo = reliquary.getLevelInfo(maBeetsPoolId);
-        _maxLevelMultiplier =_maBeetsLevelInfo.multipliers[_maBeetsLevelInfo.multipliers.length - 1];
+        _maxLevelMultiplier = _maBeetsLevelInfo.multipliers[_maBeetsLevelInfo.multipliers.length - 1];
     }
 
     /**
@@ -706,6 +706,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return incentivesForRelic;
     }
 
+    /**
+     * @dev Returns any deposited incentives for a given farm for a given epoch.
+     */
     function getFarmIncentivesForEpoch(
         uint farmId,
         uint epoch
