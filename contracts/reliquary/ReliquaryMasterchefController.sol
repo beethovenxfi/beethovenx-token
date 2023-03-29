@@ -482,7 +482,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         // first assign any capped alloc points, keeping track of how many uncapped votes and alloc points are left
         for (uint i = 0; i < farms.length; i++) {
             if (
-                caps.length >= i + 1
+                i < caps.length
                 && caps[i] > 0
                 && _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes > caps[i]
             ) {
@@ -495,7 +495,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         // then allocate all uncapped points based on percent of uncapped votes
         for (uint i = 0; i < farms.length; i++) {
             if (
-                caps.length < i + 1
+                i >= caps.length
                 || caps[i] == 0
                 || _epochVotes[epoch][i] * maBeetsAllocPoints / totalEpochVotes <= caps[i]
             ) {
