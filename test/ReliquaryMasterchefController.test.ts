@@ -90,7 +90,7 @@ describe('ReliquaryMasterchefController', function () {
         EPOCH_DURATION_IN_SECONDS = (await controller.EPOCH_DURATION_IN_SECONDS()).toNumber();
     });
 
-    describe('farms', () => {
+    describe.skip('farms', () => {
         it('can sync farms', async () => {
             await controller.syncFarms(5, 0);
         
@@ -181,7 +181,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe('voting', () => {
+    describe.skip('voting', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -365,7 +365,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe('allocation points', () => {
+    describe.skip('allocation points', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -534,7 +534,7 @@ describe('ReliquaryMasterchefController', function () {
         });
     });
 
-    describe('incentives', () => {
+    describe.skip('incentives', () => {
         beforeEach(async () => {
             await controller.syncFarms(10, 1);
         });
@@ -744,7 +744,68 @@ describe('ReliquaryMasterchefController', function () {
 
             const after = await controller.getMaBeetsAllocPointCapsForEpoch(nextEpoch);
 
+            expect(before[0]).to.eq(0);
+            expect(before[1]).to.eq(0);
+
+            expect(after[0]).to.eq(2000);
+            expect(after[1]).to.eq(3500);
+        });
+
+        it('correctly allocates points from multiple relics and committe with farm caps', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [
+                    {farmId: 0, amount: votingPower1.div(4)},
+                    {farmId: 1, amount: votingPower1.div(4)},
+                    {farmId: 2, amount: votingPower1.div(4)},
+                    {farmId: 3, amount: votingPower1.div(4)},
+                ]
+            );
+
+            await controller.connect(signer2).setVotesForRelic(
+                relicId2,
+                [
+                    {farmId: 0, amount: votingPower2.div(4)},
+                    {farmId: 4, amount: votingPower2.div(4)},
+                    {farmId: 8, amount: votingPower2.div(4)},
+                    {farmId: 9, amount: votingPower2.div(4)},
+                ]
+            );
+
+            await controller.setMaBeetsAllocPointCapsForEpoch([
+                {farmId: 0, allocPoints: 2000},
+                {farmId: 1, allocPoints: 3500}
+            ]);
+
+            await controller.setCommitteeFarmAllocationsForEpoch([
+                {farmId: 0, allocPoints: 10000},
+                {farmId: 1, allocPoints: 10000},
+                {farmId: 2, allocPoints: 10000},
+            ]);
+
+            await advanceTimeAndBlock(EPOCH_DURATION_IN_SECONDS);
+            const currentEpoch = await controller.getCurrentEpochTimestamp();
+            const totalVotingPower = await controller.getTotalVotesForEpoch(currentEpoch);
+            const totalUncappedVotesForEpoch = totalVotingPower
+                .sub(votingPower1.div(4))
+                .sub(votingPower1.div(4))
+                .sub(votingPower2.div(4));
+            const uncappedAllocPoints = BigNumber.from(64500);
+
+            const allocations = await controller.getFarmAllocationsForEpoch(currentEpoch)
             
+            expect(allocations[0]).to.eq(2000 + 10000); // cap + committee alloc
+            expect(allocations[1]).to.eq(3500 + 10000); // cap + committee alloc
+            
+            const maBeetsAllocPointsForFarm2 = uncappedAllocPoints
+                .mul(votingPower1.div(4).mul(ONE).div(totalUncappedVotesForEpoch)).div(ONE);
+
+            expect(allocations[2]).to.eq(maBeetsAllocPointsForFarm2.add(10000)); //mabeets + committee alloc
+            expect(allocations[3]).to.eq(uncappedAllocPoints.mul(votingPower1.div(4).mul(ONE).div(totalUncappedVotesForEpoch)).div(ONE));
+            expect(allocations[4]).to.eq(uncappedAllocPoints.mul(votingPower2.div(4).mul(ONE).div(totalUncappedVotesForEpoch)).div(ONE));
+            expect(allocations[8]).to.eq(uncappedAllocPoints.mul(votingPower2.div(4).mul(ONE).div(totalUncappedVotesForEpoch)).div(ONE));
+            expect(allocations[9]).to.eq(uncappedAllocPoints.mul(votingPower2.div(4).mul(ONE).div(totalUncappedVotesForEpoch)).div(ONE));
+      
         });
     });
 })

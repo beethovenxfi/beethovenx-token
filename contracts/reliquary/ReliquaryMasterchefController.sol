@@ -65,7 +65,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     IReliquary public immutable reliquary;
     // The reliquary poolId for maBEETS
     uint public immutable maBeetsPoolId;
+    // the level info for the maBeets reliquary pool
     LevelInfo private _maBeetsLevelInfo;
+    // multiplier applied to relics with full maturity
     uint private immutable _maxLevelMultiplier;
 
     // 7 * 86400 seconds - all future times are rounded by week
