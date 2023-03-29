@@ -101,24 +101,33 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     FarmStatus[][] private _farmStatuses;
     uint[][] private _farmStatusEpochs;
 
-    // _relicVotes tracks each relic's votes
+    // Tracks each relic's votes
     // epoch -> relicId -> farmId -> voteAmount
     mapping(uint => mapping(uint => mapping(uint => uint))) private _relicVotes;
-    // we additionally keep a running of total votes for each epoch on each vote
+    
+    // Running total of all votes for each epoch
     // epoch -> farmId -> amount
     mapping(uint => mapping(uint => uint)) private _epochVotes;
+    
+    // Committe allocations per epoch
     // epoch -> farmId -> allocPoints
     mapping(uint => mapping(uint => uint)) private _committeeEpochAllocations;
-    // epoch -> allocationsPointsSet
-    mapping(uint => bool) private _allocationPointsSetForEpoch;
+
     // epoch -> farmId -> maBeetsAllocPointCap, a value of 0 is treated as uncapped.
     // If the desire is to set a cap of 0, disable the farm.
     mapping(uint => mapping(uint => uint)) private _maBeetsAllocPointCaps;
 
+    // internal accounting of incentives provided to the controller.
     // epoch -> farmId -> incentiveToken -> amount
     mapping(uint => mapping(uint => mapping(address => uint))) private _incentives;
+
+    // Flag to identify when a relic has claimed their incentives for a specific token for a specific farm
     // epoch -> farmId -> incentiveToken -> relicId -> hasClaimed
     mapping(uint => mapping(uint => mapping(address => mapping(uint => bool)))) private _incentiveClaims;
+
+    // not yet in use
+    // epoch -> allocationsPointsSet
+    // mapping(uint => bool) private _allocationPointsSetForEpoch;
 
     // Incentive tokens need to be whitelisted individually, any non whitelisted incentive token will be rejected.
     EnumerableSet.AddressSet private _whiteListedIncentiveTokens;
@@ -130,6 +139,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     event FarmEnabled(uint indexed farmId, uint indexed epoch);
     event FarmDisabled(uint indexed farmId, uint indexed epoch);
     event VotesSetForRelic(uint indexed relicId, Vote[] votes);
+    event FarmsSynced(uint indexed lastFarmId, FarmStatus initialStatus);
     event IncentiveTokenWhiteListed(IERC20 indexed incentiveToken);
     event IncentivesClaimedForFarm(
         uint indexed relicId,
@@ -240,6 +250,19 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
             _farmStatuses.push(statuses);
             _farmStatusEpochs.push(statusEpochs);
         }
+
+        emit FarmsSynced(lastFarmId, initialStatus);
+    }
+
+    function getFarmStatuses(uint farmId) public view returns (FarmStatus[] memory statuses, uint[] memory epochs) {
+        statuses = _farmStatuses[farmId];
+        epochs = _farmStatusEpochs[farmId];
+    }
+
+    function getFarmStatusForEpoch(uint farmId, uint epoch) external view returns (FarmStatus) {
+        if (_farmStatusEpochs[farmId][0] > epoch) revert FarmNotRegisteredForEpoch();
+
+        return _getFarmStatusForEpoch(farmId, epoch);
     }
 
     /**
@@ -273,16 +296,6 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit FarmDisabled(farmId, epoch);
     }
 
-    function getFarmStatuses(uint farmId) public view returns (FarmStatus[] memory statuses, uint[] memory epochs) {
-        statuses = _farmStatuses[farmId];
-        epochs = _farmStatusEpochs[farmId];
-    }
-
-    function getFarmStatusForEpoch(uint farmId, uint epoch) external view returns (FarmStatus) {
-        if (_farmStatusEpochs[farmId][0] > epoch) revert FarmNotRegisteredForEpoch();
-
-        return _getFarmStatusForEpoch(farmId, epoch);
-    }
 
     // we assume the farmId has already been verified to exist and that the status change is valid
     function _addStatusToFarm(uint farmId, FarmStatus status, uint epoch) private {
