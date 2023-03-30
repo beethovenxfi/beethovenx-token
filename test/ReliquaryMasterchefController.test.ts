@@ -363,6 +363,47 @@ describe('ReliquaryMasterchefController', function () {
                 ]
             )).to.revertedWith('NotApprovedOrOwner');
         });
+
+        it('can vote several times as long as the total votes do not exceed total voting power', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPower1.div('8')}]
+            );
+
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 1, amount: votingPower1.div('8')}]
+            );
+
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 2, amount: votingPower1.div('8')}]
+            );
+
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 3, amount: votingPower1.div('8')}]
+            );
+
+            const votes = await controller.getRelicVotesForEpoch(relicId1, nextEpoch);
+
+            expect(votes[0]).to.eq(votingPower1.div('8'));
+            expect(votes[1]).to.eq(votingPower1.div('8'));
+            expect(votes[2]).to.eq(votingPower1.div('8'));
+            expect(votes[3]).to.eq(votingPower1.div('8'));
+        });
+
+        it('reverts when voting several times exceeds voting power', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPower1.div('2')}]
+            );
+
+            await expect(controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 1, amount: votingPower1}]
+            )).to.revertedWith('AmountExceedsVotingPower');
+        });
     });
 
     describe('allocation points', () => {
