@@ -85,11 +85,11 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     // We store allocation point history as parallel arrays. This allows us to determine the allocation points
     // at any epoch in the past. For simplicity, we keep both arrays the same length, so any change to one allocation
     // point type introduces a new entry for both.
-    uint[] private allocPointEpochs;
+    uint[] private _allocPointEpochs;
     // The number of master chef allocation points controlled by maBEETS votes
-    uint[] private maBeetsAllocPointsAtEpoch; 
+    uint[] private _maBeetsAllocPointsAtEpoch; 
     // The number of master chef allocation points controlled by the liquidity committee (music directors)
-    uint[] private committeeAllocPointsAtEpoch;
+    uint[] private _committeeAllocPointsAtEpoch;
 
     // An array of all masterchef farms. Triggering syncFarms will create references for any newly created farms.
     Farm[] public farms;
@@ -177,8 +177,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         IMasterChef _masterChef,
         IReliquary _reliquary,
         uint _maBeetsPoolId,
-        uint _maBeetsAllocPoints,
-        uint _committeeAllocPoints
+        // alloc points should be provided in whole numbers (ie: 1 alloc pt = 1)
+        uint _maBeetsAllocPointsRaw,
+        uint _committeeAllocPointsRaw
     ) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
@@ -186,9 +187,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         reliquary = _reliquary;
         maBeetsPoolId = _maBeetsPoolId;
 
-        maBeetsAllocPointsAtEpoch.push(_maBeetsAllocPoints * ALLOC_PT_PRECISION);
-        committeeAllocPointsAtEpoch.push(_committeeAllocPoints * ALLOC_PT_PRECISION);
-        allocPointEpochs.push(getCurrentEpochTimestamp());
+        _maBeetsAllocPointsAtEpoch.push(_maBeetsAllocPointsRaw * ALLOC_PT_PRECISION);
+        _committeeAllocPointsAtEpoch.push(_committeeAllocPointsRaw * ALLOC_PT_PRECISION);
+        _allocPointEpochs.push(getCurrentEpochTimestamp());
 
         _maBeetsLevelInfo = reliquary.getLevelInfo(maBeetsPoolId);
         _maxLevelMultiplier = _maBeetsLevelInfo.multipliers[_maBeetsLevelInfo.multipliers.length - 1];
@@ -324,7 +325,6 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
             _farmStatuses[farmId] = statuses;
             _farmStatusEpochs[farmId] = epochs;
         }
-        
     }
 
     /**
@@ -450,7 +450,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     function setMaBeetsAllocPoints(uint maBeetsAllocPointsRaw) external onlyRole(OPERATOR) {
         _updateAllocationPoints(
             maBeetsAllocPointsRaw * ALLOC_PT_PRECISION,
-            committeeAllocPointsAtEpoch[allocPointEpochs.length - 1]
+            _committeeAllocPointsAtEpoch[_allocPointEpochs.length - 1]
         );
 
         emit MaBeetsAllocationPointsSet(maBeetsAllocPointsRaw, getNextEpochTimestamp());
@@ -462,7 +462,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      */
     function setCommitteeAllocPoints(uint committeeAlocPointsRaw) external onlyRole(OPERATOR) {
         _updateAllocationPoints(
-            maBeetsAllocPointsAtEpoch[allocPointEpochs.length - 1],
+            _maBeetsAllocPointsAtEpoch[_allocPointEpochs.length - 1],
             committeeAlocPointsRaw * ALLOC_PT_PRECISION
         );
 
@@ -474,22 +474,22 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * any update to one value creates a new entry for both values.
      */
     function _updateAllocationPoints(uint maBeetsAllocPoints, uint committeeAllocPoints) private {
-        if (allocPointEpochs[allocPointEpochs.length - 1] == getNextEpochTimestamp()) {
-            maBeetsAllocPointsAtEpoch[allocPointEpochs.length - 1] = maBeetsAllocPoints;
-            committeeAllocPointsAtEpoch[allocPointEpochs.length - 1] = committeeAllocPoints;
+        if (_allocPointEpochs[_allocPointEpochs.length - 1] == getNextEpochTimestamp()) {
+            _maBeetsAllocPointsAtEpoch[_allocPointEpochs.length - 1] = maBeetsAllocPoints;
+            _committeeAllocPointsAtEpoch[_allocPointEpochs.length - 1] = committeeAllocPoints;
         }else {
-            maBeetsAllocPointsAtEpoch.push(maBeetsAllocPoints);
-            committeeAllocPointsAtEpoch.push(committeeAllocPoints);
-            allocPointEpochs.push(getNextEpochTimestamp());
+            _maBeetsAllocPointsAtEpoch.push(maBeetsAllocPoints);
+            _committeeAllocPointsAtEpoch.push(committeeAllocPoints);
+            _allocPointEpochs.push(getNextEpochTimestamp());
         }
     }
 
     function getMaBeetsAllocPointsForEpoch(uint epoch) public view returns (uint) {
-        return maBeetsAllocPointsAtEpoch[_getAllocPointIdxForEpoch(epoch)];
+        return _maBeetsAllocPointsAtEpoch[_getAllocPointIdxForEpoch(epoch)];
     }
 
     function getComitteeAllocPointsForEpoch(uint epoch) public view returns (uint) {
-        return committeeAllocPointsAtEpoch[_getAllocPointIdxForEpoch(epoch)];
+        return _committeeAllocPointsAtEpoch[_getAllocPointIdxForEpoch(epoch)];
     }
 
     function getTotalAllocPointsForEpoch(uint epoch) public view returns (uint) {
@@ -499,8 +499,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     function _getAllocPointIdxForEpoch(uint epoch) private view returns (uint) {
         // We work under the expectation that any state changing operations will be done for the most
         // recent epochs. By starting from the end of the list, we reduce reads for state changing ops.
-        for (uint i = allocPointEpochs.length - 1; i >= 0; i--) {
-            if (allocPointEpochs[i] <= epoch) {
+        for (uint i = _allocPointEpochs.length - 1; i >= 0; i--) {
+            if (_allocPointEpochs[i] <= epoch) {
                 return i;
             }
         }
