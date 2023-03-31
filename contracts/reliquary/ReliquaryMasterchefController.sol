@@ -171,7 +171,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     error FarmNotRegisteredForEpoch();
     error VotingForEpochClosed();
     error RelicIsNotFromMaBeetsPool();
+    error RelicHasNoVotingPower();
     error InvalidEpoch();
+    error RelicVotesAreValid();
 
     constructor(
         IMasterChef _masterChef,
@@ -334,6 +336,12 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         PositionInfo memory position = reliquary.getPositionForId(relicId);
 
         if (position.poolId != maBeetsPoolId) revert RelicIsNotFromMaBeetsPool();
+
+        // relics with a level of 0 have no voting power on gauges. This is to
+        // avoid scenarios where a user repeatedly mint/vote/burns relics.
+        if (position.level == 0) {
+            return 0;
+        }
         
         // votingPower = currentLevelMultiplier / maxLevelMultiplier * amount
         return position.amount
@@ -377,11 +385,11 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         // This will revert if the relic is not for the ma beets pool
         uint votingPower = getRelicVotingPower(relicId);
 
-        uint nextEpoch = getNextEpochTimestamp();
-        uint assignedAmount = 0;
-        uint i;
+        if (votingPower == 0) revert RelicHasNoVotingPower();
 
-        for (i = 0; i < votes.length; i++) {
+        uint nextEpoch = getNextEpochTimestamp();
+
+        for (uint i = 0; i < votes.length; i++) {
             _requireFarmValidAndNotDisabled(votes[i].farmId);
 
             // If this vote overwrites an existing vote, we first subtract the existing value from the total votes
@@ -393,15 +401,36 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
             _relicVotes[nextEpoch][relicId][votes[i].farmId] =  votes[i].amount;
         }
 
-
-        for (i = 0; i < farms.length; i++) {
-            assignedAmount += _relicVotes[nextEpoch][relicId][i];
-        }
-
         // if the user submitted votes exceed the total voting power for this relic, reject
-        if (assignedAmount > votingPower) revert AmountExceedsVotingPower();
+        if (getRelicTotalVotesForEpoch(relicId, nextEpoch) > votingPower) revert AmountExceedsVotingPower();
 
         emit VotesSetForRelic(relicId, votes);
+    }
+
+    /**
+     * @dev Merging and splitting relics creates a vector where a bad actor could attempt to vote several times.
+     * We provide a public mechanism here to validate any relic votes for the nextEpoch. Assuming the window
+     * of time where voting is closed is adquately long, any bad votes can be evicted.
+     */
+    function kickVotesForRelic(uint relicId) public nonReentrant {
+        uint nextEpoch = getNextEpochTimestamp();
+        uint votingPower = getRelicVotingPower(relicId);
+        uint totalVotes = getRelicTotalVotesForEpoch(relicId, nextEpoch);
+
+        if (totalVotes <= votingPower) revert RelicVotesAreValid();
+
+        for (uint i = 0; i < farms.length; i++) {
+            if (_relicVotes[nextEpoch][relicId][i] > 0) {
+                _epochVotes[nextEpoch][i] -= _relicVotes[nextEpoch][relicId][i];
+                _relicVotes[nextEpoch][relicId][i] = 0;
+            }
+        }
+    }
+
+    function kickVotesForRelics(uint[] memory relicIds) external nonReentrant {
+        for (uint i = 0; i < relicIds.length; i++) {
+            kickVotesForRelic(relicIds[i]);
+        }
     }
 
     /**
@@ -428,6 +457,19 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
 
         return votes;
+    }
+
+     /**
+     * @dev The total votes cast by a relic for a given epoch.
+     */
+    function getRelicTotalVotesForEpoch(uint relicId, uint epoch) public view returns (uint) {
+        uint totalVotes = 0;
+
+        for (uint i = 0; i < farms.length; i++) {
+            totalVotes += _relicVotes[epoch][relicId][i];
+        }
+
+        return totalVotes;
     }
 
     /**
@@ -675,9 +717,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     ) external nonReentrant returns (uint) {
         _requireIsApprovedOrOwner(relicId);
         _requireIsWhiteListedIncentiveToken(incentiveToken);
-        if (epoch > getCurrentEpochTimestamp()) revert IncentivesForEpochNotYetClaimable();
-        //TODO not adequate, should be "did exist at epoch"
         if (farmId >= farms.length) revert FarmDoesNotExist();
+        _requireFarmRegisteredForEpoch(farmId, epoch);
+        if (epoch > getCurrentEpochTimestamp()) revert IncentivesForEpochNotYetClaimable();
 
         if (_incentiveClaims[epoch][farmId][address(incentiveToken)][relicId] == true) {
             revert IncentivesAlreadyClaimed();
@@ -831,7 +873,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     }
 
     function _getFarmStatusForEpoch(uint farmId, uint epoch) private view returns (FarmStatus) {
-        if (_farmStatusEpochs[farmId][0] > epoch) revert FarmNotRegisteredForEpoch();
+        _requireFarmRegisteredForEpoch(farmId, epoch);
 
         FarmStatus status = FarmStatus.DISABLED;
 
@@ -844,6 +886,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
 
         return status;
+    }
+
+    function _requireFarmRegisteredForEpoch(uint farmId, uint epoch) private view {
+        if (_farmStatusEpochs[farmId][0] > epoch) revert FarmNotRegisteredForEpoch();
     }
 
     // This is just a reference implementation, good chance it wouldn't work exactly like this
