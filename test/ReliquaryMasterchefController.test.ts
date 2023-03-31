@@ -310,7 +310,6 @@ describe('ReliquaryMasterchefController', function () {
 
             const votes2 = await controller.getRelicVotesForEpoch(relicId2, nextEpoch);
             const votes3 = await controller.getRelicVotesForEpoch(relicId3, nextEpoch);
-            const epochVotes = await controller.getEpochVotes(nextEpoch);
             const totalVotes = await controller.getTotalVotesForEpoch(nextEpoch);
 
             expect(votes2[0]).to.eq(votingPower2.div('2'));
@@ -447,6 +446,35 @@ describe('ReliquaryMasterchefController', function () {
                 relicId,
                 [{farmId: 1, amount: '1'}]
             )).to.revertedWith('RelicHasNoVotingPower');
+        });
+
+        it('can kick votes for a relic that has reduced balance', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPower1}]
+            );
+
+            const info = await reliquary.getPositionForId(relicId1);
+
+            await reliquary.connect(signer1).withdraw(info.amount.div(2), relicId1);
+
+            const totalVotesBefore = await controller.getTotalVotesForEpoch(nextEpoch);
+
+            await controller.kickVotesForRelic(relicId1);
+
+            const totalVotesAfter = await controller.getTotalVotesForEpoch(nextEpoch);
+
+            expect(totalVotesBefore).to.eq(votingPower1);
+            expect(totalVotesAfter).to.eq('0');
+        });
+
+        it('cannot kick votes for a relic that has not changed balance', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPower1}]
+            );
+
+            await expect(controller.kickVotesForRelic(relicId1)).to.revertedWith('RelicVotesAreValid');
         });
     });
 
