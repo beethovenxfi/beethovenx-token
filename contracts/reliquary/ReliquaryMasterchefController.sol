@@ -528,18 +528,30 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
+    /**
+     * @dev The number of allocation points controlled by maBEETS voters for a given epoch
+     */
     function getMaBeetsAllocPointsForEpoch(uint epoch) public view returns (uint) {
         return _maBeetsAllocPointsAtEpoch[_getAllocPointIdxForEpoch(epoch)];
     }
 
+    /**
+     * @dev The number of allocation points controlled by the committee for a given epoch
+     */
     function getComitteeAllocPointsForEpoch(uint epoch) public view returns (uint) {
         return _committeeAllocPointsAtEpoch[_getAllocPointIdxForEpoch(epoch)];
     }
 
+    /**
+     * @dev The total number of allocation points for a given epoch
+     */
     function getTotalAllocPointsForEpoch(uint epoch) public view returns (uint) {
         return getMaBeetsAllocPointsForEpoch(epoch) + getComitteeAllocPointsForEpoch(epoch);
     }
 
+    /**
+     * @dev Get the idx for the alloc point arrays that represents the value at the given epoch
+     */
     function _getAllocPointIdxForEpoch(uint epoch) private view returns (uint) {
         // We work under the expectation that any state changing operations will be done for the most
         // recent epochs. By starting from the end of the list, we reduce reads for state changing ops.
@@ -552,9 +564,12 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         revert InvalidEpoch();
     }
 
-    // Because of rounding, its possible for the allocations to add up to be slightly more than allocated.
-    // The impact here is very small and it does not impact the function of the masterchef, so we allow for it.
+    /**
+     * @dev Get the per farm allocation points that result from maBEETS votes for a given epoch.
+     */
     function getMaBeetsFarmAllocationsForEpoch(uint epoch) public view returns (uint[] memory) {
+        // Because of rounding, its possible for the allocations to add up to be slightly more than allocated.
+        // The impact here is very small and it does not impact the function of the masterchef, so we allow for it.
         uint[] memory allocations = new uint[](farms.length);
         uint totalEpochVotes = getTotalVotesForEpoch(epoch);
         uint maBeetsAllocPoints = getMaBeetsAllocPointsForEpoch(epoch);
@@ -588,6 +603,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return allocations;
     }
 
+     /**
+     * @dev Allow committee members to set the per farm allocations for the next epoch.
+     * Allocation points are expect to be provided with 3 digits of precision (1000 = 1)
+     */
     function setCommitteeFarmAllocationsForEpoch(FarmAllocation[] memory allocations) 
         external
         onlyRole(COMMITTEE_MEMBER)
@@ -608,10 +627,16 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         if (totalAllocPoints > getComitteeAllocPointsForEpoch(epoch)) revert CommitteeAllocationGreaterThanControlled();
     }
 
+    /**
+     * @dev Get the committee farm allocation points for a given farm for a given epoch.
+     */
     function getCommitteeFarmAllocationForEpoch(uint epoch, uint farmId) public view returns (uint) {
         return _committeeEpochAllocations[epoch][farmId];
     }
 
+    /**
+     * @dev Get the per farm allocation points set by the committee for a given epoch.
+     */
     function getCommitteeFarmAllocationsForEpoch(uint epoch) public view returns (uint[] memory) {
         uint[] memory allocations = new uint[](farms.length);
 
@@ -622,6 +647,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return allocations;
     }
 
+    /**
+     * @dev Get the total per farm allocation points for a given farm for a given epoch.
+     * This includes both maBEETS and committee allocation points.
+     */
     function getFarmAllocationsForEpoch(uint epoch) public view returns (uint[] memory) {
         uint[] memory allocations = new uint[](farms.length);
         uint[] memory maBeetsAllocations = getMaBeetsFarmAllocationsForEpoch(epoch);
@@ -783,6 +812,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
+    /**
+     * @dev Returns the incentive amount for an incentive token for a given farm for a given epoch
+     */
     function getIncentiveAmountForEpoch(
         uint farmId,
         uint epoch,
