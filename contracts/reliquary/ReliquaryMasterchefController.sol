@@ -50,6 +50,8 @@ struct FarmIncentive {
     uint amount;
 }
 
+// Notion doc that provides insight into the approach taken here
+// https://beethovenx.notion.site/Reliquary-Masterchef-Controller-8ef7a2e6103e4f45bb6906383c955dc7
 contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerable {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
