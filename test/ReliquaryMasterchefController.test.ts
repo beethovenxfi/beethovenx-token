@@ -404,6 +404,25 @@ describe('ReliquaryMasterchefController', function () {
                 [{farmId: 1, amount: votingPower1}]
             )).to.revertedWith('AmountExceedsVotingPower');
         });
+
+        it('changing votes should be reflected in total epoch votes', async () => {
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [{farmId: 0, amount: votingPower1.div('8')}]
+            );
+
+            await controller.connect(signer1).setVotesForRelic(
+                relicId1,
+                [
+                    {farmId: 0, amount: 0},
+                    {farmId: 1, amount: votingPower1.div('2')}
+                ]
+            );
+
+            const totalVotes = await controller.getTotalVotesForEpoch(nextEpoch);
+
+            expect(totalVotes).to.eq(votingPower1.div('2'));
+        });
     });
 
     describe('allocation points', () => {
