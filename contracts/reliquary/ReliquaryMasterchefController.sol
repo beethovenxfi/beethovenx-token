@@ -338,7 +338,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         if (position.poolId != maBeetsPoolId) revert RelicIsNotFromMaBeetsPool();
 
         // relics with a level of 0 have no voting power on gauges. This is to
-        // avoid scenarios where a user repeatedly mint/vote/burns relics.
+        // avoid scenarios where a user repeatedly mint/vote/burns.
         if (position.level == 0) {
             return 0;
         }
@@ -409,7 +409,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     /**
      * @dev Merging and splitting relics creates a vector where a bad actor could attempt to vote several times.
-     * We provide a public mechanism here to validate any relic votes for the nextEpoch. Assuming the window
+     * We provide a mechanism here to validate any relic votes for the nextEpoch. Assuming the window
      * of time where voting is closed is adquately long, any bad votes can be evicted.
      */
     function kickVotesForRelic(uint relicId) public nonReentrant {

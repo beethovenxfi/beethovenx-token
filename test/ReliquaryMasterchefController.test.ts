@@ -14,6 +14,8 @@ const RELIC_HOLDER_1 = '0x2f07C8De8b633a7B4278B28C09a654295D8eEefb';
 const RELIC_HOLDER_2 = '0x911B1ecef200fE24E4ea9B54B9D87C3dfbfDB5Db';
 const RELIC_HOLDER_3 = '0xbf21Ba013A41b443b7b21eaAbBB647ceC360fa68';
 const HOLDER_WITH_3_RELICS = '0x00a01bc13a1ddf4a4af6852baee66b76a0316cbc';
+const RELIC_HOLDER_LEVEL_0 = '0xd846088e0d4f97ed5e17b24d0ded2c640e4f313c';
+const LEVEL_0_RELIC_ID = '0x00080000' 
 
 const USDC = '0x04068da6c83afcfa0e13ba15a6696662335d5b75';
 const WFTM = '0x21be370d5312f44cb42ce377bc9b8a0cef1a4c83';
@@ -76,7 +78,7 @@ describe('ReliquaryMasterchefController', function () {
         response = await reliquary.relicPositionsOfOwner(HOLDER_WITH_3_RELICS);
         info = response.positionInfos[0];
         relicId2 = response.relicIds[0].toString();
-        relicId3 = response.relicIds[1].toString();
+        relicId3 = response.relicIds[2].toString();
         
         levelInfo = await reliquary.getLevelInfo(info.poolId);
         maxLevelMultiplier = levelInfo.multipliers[levelInfo.multipliers.length - 1];
@@ -422,6 +424,29 @@ describe('ReliquaryMasterchefController', function () {
             const totalVotes = await controller.getTotalVotesForEpoch(nextEpoch);
 
             expect(totalVotes).to.eq(votingPower1.div('2'));
+        });
+
+        it('should have 0 voting power when the relic is level 0', async () => {
+            let response = await reliquary.relicPositionsOfOwner(RELIC_HOLDER_LEVEL_0);
+            const relicId = response.relicIds[0].toString();
+
+            const votingPower = await controller.getRelicVotingPower(relicId);
+
+
+            expect(votingPower).to.eq('0');
+        });
+
+        it('should revert when voting with a level 0 relic', async () => {
+            await network.provider.request({ method: "hardhat_impersonateAccount", params: [RELIC_HOLDER_LEVEL_0] });
+            const signer = await ethers.getSigner(RELIC_HOLDER_LEVEL_0);
+
+            let response = await reliquary.relicPositionsOfOwner(RELIC_HOLDER_LEVEL_0);
+            const relicId = response.relicIds[0].toString();
+
+            await expect(controller.connect(signer).setVotesForRelic(
+                relicId,
+                [{farmId: 1, amount: '1'}]
+            )).to.revertedWith('RelicHasNoVotingPower');
         });
     });
 
