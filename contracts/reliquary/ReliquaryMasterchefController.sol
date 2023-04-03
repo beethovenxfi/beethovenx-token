@@ -437,6 +437,21 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
+    function canKickVotes(uint[] memory relicIds) external view returns (bool[] memory canKick) {
+        canKick = new bool[](relicIds.length);
+
+        uint nextEpoch = getNextEpochTimestamp();
+        uint votingPower;
+        uint totalVotes;
+
+        for (uint i = 0; i < relicIds.length; i++) {
+            votingPower = getRelicVotingPower(relicIds[i]);
+            totalVotes = getRelicTotalVotesForEpoch(relicIds[i], nextEpoch);
+
+            canKick[i] = totalVotes > votingPower;
+        }
+    }
+
     /**
      * @dev The total number of votes cast for a given epoch.
      */
@@ -861,6 +876,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         return _whiteListedIncentiveTokens.values();
     }
 
+    /**
+     * @dev Fetches the balancer pool id for a given token address, returns an empty string
+     * If the token is not a BPT
+     */
     function _getBalancerPoolId(address token) internal view returns (bytes32) {
         // It's possible that the token is not a pool, in which case we return an empty string
         try IBalancerPool(token).getPoolId() returns (bytes32 poolId) {
