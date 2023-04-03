@@ -261,7 +261,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev Returns the historical statuses for the given farmId. Each status has a corresponding epoch that represents
      * the epoch during which the status changed.
      */
-    function getFarmStatuses(uint farmId) public view returns (FarmStatus[] memory statuses, uint[] memory epochs) {
+    function getFarmStatuses(uint farmId) external view returns (FarmStatus[] memory statuses, uint[] memory epochs) {
+        if (farmId >= farms.length) revert FarmDoesNotExist();
+
         statuses = _farmStatuses[farmId];
         epochs = _farmStatusEpochs[farmId];
     }
@@ -838,14 +840,23 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         emit IncentiveTokenWhiteListed(incentiveToken);
     }
 
+    /**
+     * @dev Is the token provided as input a whitelisted incentive token
+     */
     function isIncentiveTokenWhiteListed(IERC20 incentiveToken) external view returns (bool) {
         return _whiteListedIncentiveTokens.contains(address(incentiveToken));
     }
 
+    /**
+     * @dev Get whitelisted incentive token at index
+     */
     function getWhiteListedIncentiveToken(uint index) external view returns (IERC20) {
         return IERC20(_whiteListedIncentiveTokens.at(index));
     }
 
+    /**
+     * @dev Return all whitelisted incentive tokens
+     */
     function getWhiteListedIncentiveTokens() public view returns (address[] memory) {
         return _whiteListedIncentiveTokens.values();
     }
