@@ -337,22 +337,27 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev The voting power of a given maBEETS relic
      */
     function getRelicVotingPower(uint relicId) public view returns (uint) {
-        PositionInfo memory position = reliquary.getPositionForId(relicId);
+        try reliquary.getPositionForId(relicId) returns (PositionInfo memory position) {
+            if (position.poolId != maBeetsPoolId) revert RelicIsNotFromMaBeetsPool();
 
-        if (position.poolId != maBeetsPoolId) revert RelicIsNotFromMaBeetsPool();
+            // relics with a level of 0 have no voting power on gauges. This is to
+            // avoid scenarios where a user repeatedly mint/vote/burns.
+            if (position.level == 0) {
+                return 0;
+            }
 
-        // relics with a level of 0 have no voting power on gauges. This is to
-        // avoid scenarios where a user repeatedly mint/vote/burns.
-        if (position.level == 0) {
+            // votingPower = currentLevelMultiplier / maxLevelMultiplier * amount
+            return position.amount
+                * MABEETS_PRECISION
+                * _maBeetsLevelInfo.multipliers[position.level]
+                / _maxLevelMultiplier
+                / MABEETS_PRECISION;
+        } catch {
+            // since we call getRelicVotingPower from the kick function, we need to handle instances
+            // where the relic has been burned. We do this here with the try/catch. If getPositionForId
+            // reverts, the relicId is not valid, and so should be considered as having no voting power.
             return 0;
         }
-        
-        // votingPower = currentLevelMultiplier / maxLevelMultiplier * amount
-        return position.amount
-            * MABEETS_PRECISION
-            * _maBeetsLevelInfo.multipliers[position.level]
-            / _maxLevelMultiplier
-            / MABEETS_PRECISION;
     }
 
     /**
