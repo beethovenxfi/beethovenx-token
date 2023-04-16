@@ -481,6 +481,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      */
     function _stakeRelic(uint relicId) internal {
         reliquary.safeTransferFrom(msg.sender, address(this), relicId);
+        _stakedRelics[relicId] = msg.sender;
     }
 
     /**
