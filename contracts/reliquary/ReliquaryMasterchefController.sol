@@ -446,6 +446,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     /**
      * @dev In scenarios where unstake fails for some reason, we provide an emergency option that
      * allows the operator to send a relic back to its owner, bypassing the vote unwinding.
+     * This could result in an incorrect vote allocation, but the impact should be minimal and we
+     * rely on the judgement of the operator in these rare scenarios.
      */
     function emergencyUnstakeRelic(uint relicId) external nonReentrant onlyRole(OPERATOR) {
         if (_stakedRelics[relicId] == address(0)) revert RelicNotStaked();
@@ -458,9 +460,11 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev In scenarios where the controller is accidentally sent a relic via a transfer and NOT
      * via a call to setVotesForRelic, we provide the operator with the ability to rescue these
      * relics so that they would not be forever lost. It is the responsibility of the operator to return
-     * the relic to the correct owner.
+     * the relic to the correct owner. In scenarios where the relic was correctly staked, but cannot be unstaked, 
+     * the operator should instead use emergencyUnstakeRelic.
      */
     function emergencyRescueRelic(uint relicId) external nonReentrant onlyRole(OPERATOR) {
+        // these checks ensure the operator cannot maliciously rescue a relic that has been correctly staked.
         if (_stakedRelics[relicId] != address(0)) revert RelicIsStaked();
         if (reliquary.ownerOf(relicId) != address(this)) revert ControllerNotOwnerOfRelic();
 
