@@ -156,7 +156,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     // errors
     error NotApprovedOrOwner();
     error RelicNotStaked();
+    error RelicIsStaked();
     error NotOwnerOfStakedRelic();
+    error ControllerNotOwnerOfRelic();
     error FarmDoesNotExist();
     error FarmIsDisabled();
     error FarmIsEnabled();
@@ -450,6 +452,21 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
         reliquary.safeTransferFrom(address(this), _stakedRelics[relicId], relicId);
         _stakedRelics[relicId] = address(0);
+    }
+
+    /**
+     * @dev In scenarios where the controller is accidentally sent a relic via a transfer and NOT
+     * via a call to setVotesForRelic, we provide the operator with the ability to rescue relics these
+     * relics so that they would not be forever lost. It is the responsibility of the operator to return
+     * the relic to the correct owner.
+     */
+    function emergencyRescueRelic(uint relicId) external nonReentrant onlyRole(OPERATOR) {
+        if (_stakedRelics[relicId] != address(0)) revert RelicIsStaked();
+        if (reliquary.ownerOf(relicId) != address(this)) revert ControllerNotOwnerOfRelic();
+
+        // we only get this far if the relicId is owned by the controller but has not been flagged as staked.
+        // This means that the controller should not have this relic as it is unstakable.
+        reliquary.safeTransferFrom(address(this), msg.sender, relicId);
     }
 
     /**
