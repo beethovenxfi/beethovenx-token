@@ -456,7 +456,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     /**
      * @dev In scenarios where the controller is accidentally sent a relic via a transfer and NOT
-     * via a call to setVotesForRelic, we provide the operator with the ability to rescue relics these
+     * via a call to setVotesForRelic, we provide the operator with the ability to rescue these
      * relics so that they would not be forever lost. It is the responsibility of the operator to return
      * the relic to the correct owner.
      */
