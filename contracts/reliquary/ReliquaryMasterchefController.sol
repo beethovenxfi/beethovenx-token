@@ -101,6 +101,10 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     FarmStatus[][] private _farmStatuses;
     uint[][] private _farmStatusEpochs;
 
+    // Tracks staked relics
+    // relicId -> owner address
+    mapping(uint => address) private _stakedRelics;
+
     // Tracks each relic's votes
     // epoch -> relicId -> farmId -> voteAmount
     mapping(uint => mapping(uint => mapping(uint => uint))) private _relicVotes;
@@ -151,6 +155,8 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
 
     // errors
     error NotApprovedOrOwner();
+    error RelicNotStaked();
+    error NotOwnerOfStakedRelic();
     error FarmDoesNotExist();
     error FarmIsDisabled();
     error FarmIsEnabled();
@@ -337,27 +343,16 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev The voting power of a given maBEETS relic
      */
     function getRelicVotingPower(uint relicId) public view returns (uint) {
-        try reliquary.getPositionForId(relicId) returns (PositionInfo memory position) {
-            if (position.poolId != maBeetsPoolId) revert RelicIsNotFromMaBeetsPool();
+        PositionInfo memory position = reliquary.getPositionForId(relicId);
+        
+        if (position.poolId != maBeetsPoolId) revert RelicIsNotFromMaBeetsPool();
 
-            // relics with a level of 0 have no voting power on gauges. This is to
-            // avoid scenarios where a user repeatedly mint/vote/burns.
-            if (position.level == 0) {
-                return 0;
-            }
-
-            // votingPower = currentLevelMultiplier / maxLevelMultiplier * amount
-            return position.amount
-                * MABEETS_PRECISION
-                * _maBeetsLevelInfo.multipliers[position.level]
-                / _maxLevelMultiplier
-                / MABEETS_PRECISION;
-        } catch {
-            // since we call getRelicVotingPower from the kick function, we need to handle instances
-            // where the relic has been burned. We do this here with the try/catch. If getPositionForId
-            // reverts, the relicId is not valid, and so should be considered as having no voting power.
-            return 0;
-        }
+        // votingPower = currentLevelMultiplier / maxLevelMultiplier * amount
+        return position.amount
+            * MABEETS_PRECISION
+            * _maBeetsLevelInfo.multipliers[position.level]
+            / _maxLevelMultiplier
+            / MABEETS_PRECISION;
     }
 
     /**
@@ -385,16 +380,21 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * @dev Internal handling for setting votes for a relic, nonReentrant modifier is not used.
      * This operation is additive to allow for multiple vote submissions for a single relic.
      * To update a previous vote, pass the desired value with the appropriate farmId. Passing a 0
-     * value will effectively unset the previous vote for the given farmId.
+     * value will effectively unset the previous vote for the given farmId. Voting requires the relic to
+     * be staked. If it is not already staked, we stake it during the execution of this function.
      */
     function _setVotesForRelic(uint relicId, Vote[] memory votes) internal {
-        _requireIsApprovedOrOwner(relicId);
+        _requireRelicIsStakedApprovedOrOwner(relicId);
         _requireNoDuplicateVotes(votes);
 
-        // This will revert if the relic is not for the ma beets pool
         uint votingPower = getRelicVotingPower(relicId);
 
         if (votingPower == 0) revert RelicHasNoVotingPower();
+
+        // if the relic is not already staked, we stake it.
+        if (_stakedRelics[relicId] == address(0)) {
+            _stakeRelic(relicId);
+        }
 
         uint nextEpoch = getNextEpochTimestamp();
 
@@ -417,44 +417,49 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     }
 
     /**
-     * @dev Merging and splitting relics creates a vector where a bad actor could attempt to vote several times.
-     * We provide a mechanism here to validate any relic votes for the nextEpoch. Assuming the window
-     * of time where voting is closed is adquately long, any bad votes can be evicted.
+     * @dev When voting, the user must also stake their relic. This allows for safeguards from mint/burn/merge/split
+     * actions that could allow a malicious user to vote several times with the same underlying position. A staked
+     * relic can be unstaked at any time. If the voting period has not closed for the next epoch, any committed votes
+     * are removed prior to unstaking.
      */
-    function kickVotesForRelic(uint relicId) public nonReentrant {
+    function unstakeRelic(uint relicId) public nonReentrant {
+        _requireRelicIsStaked(relicId);
+
         uint nextEpoch = getNextEpochTimestamp();
-        uint votingPower = getRelicVotingPower(relicId);
-        uint totalVotes = getRelicTotalVotesForEpoch(relicId, nextEpoch);
 
-        if (totalVotes <= votingPower) revert RelicVotesAreValid();
-
-        for (uint i = 0; i < farms.length; i++) {
-            if (_relicVotes[nextEpoch][relicId][i] > 0) {
-                _epochVotes[nextEpoch][i] -= _relicVotes[nextEpoch][relicId][i];
-                _relicVotes[nextEpoch][relicId][i] = 0;
+        // if voting has not closed, we remove any votes made by this relic for the next epoch
+        if (nextEpoch - block.timestamp > VOTING_CLOSES_SECONDS_BEFORE_NEXT_EPOCH) {
+            for (uint i = 0; i < farms.length; i++) {
+                if (_relicVotes[nextEpoch][relicId][i] > 0) {
+                    _epochVotes[nextEpoch][i] = _epochVotes[nextEpoch][i] - _relicVotes[nextEpoch][relicId][i];
+                    _relicVotes[nextEpoch][relicId][i] =  0;
+                }
             }
         }
+
+        reliquary.safeTransferFrom(address(this), msg.sender, relicId);
+        _stakedRelics[relicId] = address(0);
     }
 
-    function kickVotesForRelics(uint[] memory relicIds) external nonReentrant {
-        for (uint i = 0; i < relicIds.length; i++) {
-            kickVotesForRelic(relicIds[i]);
-        }
+    /**
+     * @dev In scenarios where unstake fails for some reason, we provide an emergency option that
+     * allows the operator to send a relic back to its owner, bypassing the vote unwinding.
+     */
+    function emergencyUnstakeRelic(uint relicId) external nonReentrant onlyRole(OPERATOR) {
+        if (_stakedRelics[relicId] == address(0)) revert RelicNotStaked();
+
+        reliquary.safeTransferFrom(address(this), _stakedRelics[relicId], relicId);
+        _stakedRelics[relicId] = address(0);
     }
 
-    function canKickVotes(uint[] memory relicIds) external view returns (bool[] memory canKick) {
-        canKick = new bool[](relicIds.length);
-
-        uint nextEpoch = getNextEpochTimestamp();
-        uint votingPower;
-        uint totalVotes;
-
-        for (uint i = 0; i < relicIds.length; i++) {
-            votingPower = getRelicVotingPower(relicIds[i]);
-            totalVotes = getRelicTotalVotesForEpoch(relicIds[i], nextEpoch);
-
-            canKick[i] = totalVotes > votingPower;
-        }
+    /**
+     * @dev Internal handling for staking a relic, nonReentrant modifier is not used.
+     * We do not check if the relic is already staked here, this should be done by the calling function.
+     * The msg.sender must approve the controller to transfer the relic prior to any function call that
+     * attempts to _stakeRelic
+     */
+    function _stakeRelic(uint relicId) internal {
+        reliquary.safeTransferFrom(msg.sender, address(this), relicId);
     }
 
     /**
@@ -768,7 +773,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         IERC20 incentiveToken,
         address recipient
     ) external nonReentrant returns (uint) {
-        _requireIsApprovedOrOwner(relicId);
+        _requireRelicIsStakedApprovedOrOwner(relicId);
         _requireIsWhiteListedIncentiveToken(incentiveToken);
         if (farmId >= farms.length) revert FarmDoesNotExist();
         _requireFarmRegisteredForEpoch(farmId, epoch);
@@ -901,8 +906,17 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         }
     }
 
-    function _requireIsApprovedOrOwner(uint relicId) private view {
-        if (!reliquary.isApprovedOrOwner(msg.sender, relicId)) revert NotApprovedOrOwner();
+    function _requireRelicIsStaked(uint relicId) private view {
+        if (_stakedRelics[relicId] == address(0)) revert RelicNotStaked();
+        if (_stakedRelics[relicId] != msg.sender) revert NotOwnerOfStakedRelic();
+    }
+
+    function _requireRelicIsStakedApprovedOrOwner(uint relicId) private view {
+        if (_stakedRelics[relicId] == address(0)) {
+            if (!reliquary.isApprovedOrOwner(msg.sender, relicId)) revert NotApprovedOrOwner();
+        }else {
+            if (_stakedRelics[relicId] != msg.sender) revert NotOwnerOfStakedRelic();
+        }
     }
 
     function _requireIsWhiteListedIncentiveToken(IERC20 incentiveToken) private view {
