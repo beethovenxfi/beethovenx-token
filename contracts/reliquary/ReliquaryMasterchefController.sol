@@ -154,7 +154,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
     );
 
     // errors
-    error NotApprovedOrOwner();
+    error NotRelicOwner();
     error RelicNotStaked();
     error RelicIsStaked();
     error NotOwnerOfStakedRelic();
@@ -386,7 +386,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
      * be staked. If it is not already staked, we stake it during the execution of this function.
      */
     function _setVotesForRelic(uint relicId, Vote[] memory votes) internal {
-        _requireRelicIsStakedApprovedOrOwner(relicId);
+        _requireIsRelicOwner(relicId);
         _requireNoDuplicateVotes(votes);
 
         uint votingPower = getRelicVotingPower(relicId);
@@ -794,7 +794,7 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         IERC20 incentiveToken,
         address recipient
     ) external nonReentrant returns (uint) {
-        _requireRelicIsStakedApprovedOrOwner(relicId);
+        _requireIsRelicOwner(relicId);
         _requireIsWhiteListedIncentiveToken(incentiveToken);
         if (farmId >= farms.length) revert FarmDoesNotExist();
         _requireFarmRegisteredForEpoch(farmId, epoch);
@@ -932,9 +932,9 @@ contract ReliquaryMasterchefController is ReentrancyGuard, AccessControlEnumerab
         if (_stakedRelics[relicId] != msg.sender) revert NotOwnerOfStakedRelic();
     }
 
-    function _requireRelicIsStakedApprovedOrOwner(uint relicId) private view {
+    function _requireIsRelicOwner(uint relicId) private view {
         if (_stakedRelics[relicId] == address(0)) {
-            if (!reliquary.isApprovedOrOwner(msg.sender, relicId)) revert NotApprovedOrOwner();
+            if (reliquary.ownerOf(relicId) != msg.sender) revert NotRelicOwner();
         }else {
             if (_stakedRelics[relicId] != msg.sender) revert NotOwnerOfStakedRelic();
         }
