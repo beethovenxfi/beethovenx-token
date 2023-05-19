@@ -72,7 +72,7 @@ const config: HardhatUserConfig = {
             chainId: 250,
             live: true,
             saveDeployments: true,
-            gasMultiplier: 30,
+            // gasMultiplier: 30,
         },
         goerli: {
             url: `https://eth-goerli.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
