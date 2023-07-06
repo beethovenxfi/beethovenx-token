@@ -20,7 +20,7 @@ interface ILiquidityGauge {
 contract BeethovenCheckpointer {
     function checkpoint_my_gauges(address[] calldata gauges_to_checkpoint) external {
         for (uint256 i = 0; i < gauges_to_checkpoint.length; i++) {
-            ILiquidityGauge(gauges_to_checkpoint[i]).user_checkpoint(user);
+            ILiquidityGauge(gauges_to_checkpoint[i]).user_checkpoint(msg.sender);
         }
     }
 
