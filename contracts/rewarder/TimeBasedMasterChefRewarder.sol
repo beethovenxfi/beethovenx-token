@@ -74,6 +74,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
             rewardPerSecond = 0;
             emit LogRewardPerSecond(0);
         }
+        lastCheckpointTimestamp = block.timestamp;
     }
 
     function onBeetsReward(
