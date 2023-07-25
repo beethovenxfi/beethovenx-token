@@ -39,25 +39,15 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
 
     address public immutable masterChef;
 
-    event LogOnReward(
-        address indexed user,
-        uint256 indexed pid,
-        uint256 amount,
-        address indexed to
-    );
+    uint256 public totalPendingRewards;
+    uint256 public lastCheckpointTimestamp;
+
+    event LogOnReward(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
     event LogPoolAddition(uint256 indexed pid, uint256 allocPoint);
     event LogSetPool(uint256 indexed pid, uint256 allocPoint);
-    event LogUpdatePool(
-        uint256 indexed pid,
-        uint256 lastRewardTime,
-        uint256 lpSupply,
-        uint256 accRewardTokenPerShare
-    );
+    event LogUpdatePool(uint256 indexed pid, uint256 lastRewardTime, uint256 lpSupply, uint256 accRewardTokenPerShare);
     event LogRewardPerSecond(uint256 rewardPerSecond);
-    event LogSetRewardToken(
-        IERC20 indexed rewardToken,
-        uint256 accTokenPrecision
-    );
+    event LogSetRewardToken(IERC20 indexed rewardToken, uint256 accTokenPrecision);
     event LogInit();
 
     constructor(address _masterChef) {
@@ -66,10 +56,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
 
     /// @notice To allow contract verification on matching similar source, we dont provide this in the constructor
     function initializeRewardToken(ERC20 token) external onlyOwner {
-        require(
-            address(rewardToken) == address(0),
-            "Reward token can only be set once"
-        );
+        require(address(rewardToken) == address(0), "Reward token can only be set once");
         uint8 decimals = token.decimals();
         require(decimals <= 18, "maximum 18 decimals supported");
         /* 
@@ -79,6 +66,14 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         accTokenPrecision = 10**uint256(18 - decimals + 12);
         rewardToken = token;
         emit LogSetRewardToken(token, accTokenPrecision);
+    }
+
+    function _checkpointPendingRewards() internal {
+        totalPendingRewards = totalPendingRewards + rewardPerSecond * (block.timestamp - lastCheckpointTimestamp);
+        if (totalPendingRewards >= rewardToken.balanceOf(address(this))) {
+            rewardPerSecond = 0;
+            emit LogRewardPerSecond(0);
+        }
     }
 
     function onBeetsReward(
@@ -92,23 +87,19 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         UserInfo storage userPoolInfo = userInfo[pid][userAddress];
         uint256 pending;
         if (userPoolInfo.amount > 0) {
-            pending =
-                ((userPoolInfo.amount * pool.accRewardTokenPerShare) /
-                    accTokenPrecision) -
-                userPoolInfo.rewardDebt;
+            pending = ((userPoolInfo.amount * pool.accRewardTokenPerShare) / accTokenPrecision) - userPoolInfo.rewardDebt;
             if (pending > rewardToken.balanceOf(address(this))) {
                 pending = rewardToken.balanceOf(address(this));
             }
         }
         userPoolInfo.amount = newLpAmount;
-        userPoolInfo.rewardDebt =
-            (newLpAmount * pool.accRewardTokenPerShare) /
-            accTokenPrecision;
+        userPoolInfo.rewardDebt = (newLpAmount * pool.accRewardTokenPerShare) / accTokenPrecision;
 
         if (pending > 0) {
             rewardToken.safeTransfer(recipient, pending);
+            totalPendingRewards = totalPendingRewards - pending;
         }
-
+        _checkpointPendingRewards();
         emit LogOnReward(userAddress, pid, pending, recipient);
     }
 
@@ -116,12 +107,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         uint256 pid,
         address user,
         uint256
-    )
-        external
-        view
-        override
-        returns (IERC20[] memory rewardTokens, uint256[] memory rewardAmounts)
-    {
+    ) external view override returns (IERC20[] memory rewardTokens, uint256[] memory rewardAmounts) {
         IERC20[] memory _rewardTokens = new IERC20[](1);
         _rewardTokens[0] = (rewardToken);
         uint256[] memory _rewardAmounts = new uint256[](1);
@@ -132,15 +118,13 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     /// @notice Sets the rewards per second to be distributed. Can only be called by the owner.
     /// @param _rewardPerSecond The amount of token rewards to be distributed per second.
     function setRewardPerSecond(uint256 _rewardPerSecond) public onlyOwner {
+        _checkpointPendingRewards();
         rewardPerSecond = _rewardPerSecond;
         emit LogRewardPerSecond(_rewardPerSecond);
     }
 
     modifier onlyMasterChef() {
-        require(
-            msg.sender == masterChef,
-            "Only MasterChef can call this function."
-        );
+        require(msg.sender == masterChef, "Only MasterChef can call this function.");
         _;
     }
 
@@ -157,11 +141,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         uint256 lastRewardTime = block.timestamp;
         totalAllocPoint = totalAllocPoint + allocPoint;
 
-        poolInfo[pid] = PoolInfo({
-            allocPoint: allocPoint,
-            lastRewardTime: lastRewardTime,
-            accRewardTokenPerShare: 0
-        });
+        poolInfo[pid] = PoolInfo({allocPoint: allocPoint, lastRewardTime: lastRewardTime, accRewardTokenPerShare: 0});
         masterchefPoolIds.push(pid);
         emit LogPoolAddition(pid, allocPoint);
     }
@@ -171,10 +151,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     /// @param allocPoint New AP of the pool.
     function set(uint256 pid, uint256 allocPoint) public onlyOwner {
         require(poolInfo[pid].lastRewardTime != 0, "Pool does not exist");
-        totalAllocPoint =
-            totalAllocPoint -
-            poolInfo[pid].allocPoint +
-            allocPoint;
+        totalAllocPoint = totalAllocPoint - poolInfo[pid].allocPoint + allocPoint;
 
         poolInfo[pid].allocPoint = allocPoint;
         emit LogSetPool(pid, allocPoint);
@@ -184,11 +161,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     /// @param _pid The index of the MasterChef pool. See `poolInfo`.
     /// @param _user Address of user.
     /// @return pending rewards for a given user.
-    function pendingToken(uint256 _pid, address _user)
-        public
-        view
-        returns (uint256 pending)
-    {
+    function pendingToken(uint256 _pid, address _user) public view returns (uint256 pending) {
         PoolInfo memory pool = poolInfo[_pid];
         if (pool.lastRewardTime == 0) {
             pending = 0;
@@ -196,25 +169,16 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
             UserInfo storage user = userInfo[_pid][_user];
             uint256 accRewardTokenPerShare = pool.accRewardTokenPerShare;
 
-            uint256 totalLpSupply = BeethovenxMasterChef(masterChef)
-                .lpTokens(_pid)
-                .balanceOf(masterChef);
+            uint256 totalLpSupply = BeethovenxMasterChef(masterChef).lpTokens(_pid).balanceOf(masterChef);
 
             if (block.timestamp > pool.lastRewardTime && totalLpSupply != 0) {
-                uint256 timeSinceLastReward = block.timestamp -
-                    pool.lastRewardTime;
+                uint256 timeSinceLastReward = block.timestamp - pool.lastRewardTime;
 
-                uint256 rewards = (timeSinceLastReward *
-                    rewardPerSecond *
-                    pool.allocPoint) / totalAllocPoint;
+                uint256 rewards = (timeSinceLastReward * rewardPerSecond * pool.allocPoint) / totalAllocPoint;
 
-                accRewardTokenPerShare =
-                    accRewardTokenPerShare +
-                    ((rewards * accTokenPrecision) / totalLpSupply);
+                accRewardTokenPerShare = accRewardTokenPerShare + ((rewards * accTokenPrecision) / totalLpSupply);
             }
-            pending =
-                ((user.amount * accRewardTokenPerShare) / accTokenPrecision) -
-                user.rewardDebt;
+            pending = ((user.amount * accRewardTokenPerShare) / accTokenPrecision) - user.rewardDebt;
             if (pending > rewardToken.balanceOf(address(this))) {
                 pending = rewardToken.balanceOf(address(this));
             }
@@ -236,27 +200,16 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     function updatePool(uint256 pid) public returns (PoolInfo memory pool) {
         pool = poolInfo[pid];
         if (pool.lastRewardTime != 0 && block.timestamp > pool.lastRewardTime) {
-            uint256 totalLpSupply = BeethovenxMasterChef(masterChef)
-                .lpTokens(pid)
-                .balanceOf(masterChef);
+            uint256 totalLpSupply = BeethovenxMasterChef(masterChef).lpTokens(pid).balanceOf(masterChef);
 
             if (totalLpSupply > 0) {
                 uint256 time = block.timestamp - pool.lastRewardTime;
-                uint256 tokenReward = (time *
-                    rewardPerSecond *
-                    pool.allocPoint) / totalAllocPoint;
-                pool.accRewardTokenPerShare =
-                    pool.accRewardTokenPerShare +
-                    ((tokenReward * accTokenPrecision) / totalLpSupply);
+                uint256 tokenReward = (time * rewardPerSecond * pool.allocPoint) / totalAllocPoint;
+                pool.accRewardTokenPerShare = pool.accRewardTokenPerShare + ((tokenReward * accTokenPrecision) / totalLpSupply);
             }
             pool.lastRewardTime = block.timestamp;
             poolInfo[pid] = pool;
-            emit LogUpdatePool(
-                pid,
-                pool.lastRewardTime,
-                totalLpSupply,
-                pool.accRewardTokenPerShare
-            );
+            emit LogUpdatePool(pid, pool.lastRewardTime, totalLpSupply, pool.accRewardTokenPerShare);
         }
     }
 
@@ -270,9 +223,6 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     /// @param withdrawRemainingFundsTo where to withdraaw the remaining funds to
     function shutDown(address withdrawRemainingFundsTo) external onlyOwner {
         setRewardPerSecond(0);
-        rewardToken.transfer(
-            withdrawRemainingFundsTo,
-            rewardToken.balanceOf(address(this))
-        );
+        rewardToken.transfer(withdrawRemainingFundsTo, rewardToken.balanceOf(address(this)));
     }
 }
