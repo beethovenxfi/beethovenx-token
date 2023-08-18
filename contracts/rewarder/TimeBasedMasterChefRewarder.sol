@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../interfaces/IRewarder.sol";
 import "../token/BeethovenxMasterChef.sol";
 
+import "hardhat/console.sol";
+
 contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     using SafeERC20 for ERC20;
 
@@ -39,8 +41,10 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
 
     address public immutable masterChef;
 
-    uint256 public totalPendingRewards;
+    uint256 public totalPendingRewards = 0;
     uint256 public lastCheckpointTimestamp;
+
+    uint256 public totalLpAmount = 0;
 
     event LogOnReward(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
     event LogPoolAddition(uint256 indexed pid, uint256 allocPoint);
@@ -68,9 +72,36 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         emit LogSetRewardToken(token, accTokenPrecision);
     }
 
-    function _checkpointPendingRewards() internal {
+    function getTotalPendingRewards() external view returns (uint256) {
+        return totalPendingRewards + rewardPerSecond * (block.timestamp - lastCheckpointTimestamp);
+    }
+
+    function setTotalLpSupply(uint256 newLpAmount, uint256 oldLpAmount) internal {
+        console.log("lp checkpoint called at block %s", block.number);
+        console.log("totalLpAmount before: %s", totalLpAmount);
+        totalLpAmount = totalLpAmount + newLpAmount - oldLpAmount;
+        console.log("totalLpAmount after: %s", totalLpAmount);
+    }
+
+    function _checkpointTotalPendingRewards() internal {
+        console.log("checkpoint called at block %s", block.number);
+
+        if (totalLpAmount == 0) {
+            lastCheckpointTimestamp = block.timestamp;
+            totalPendingRewards = 0;
+            return;
+        }
+
+        if (rewardPerSecond == 0) {
+            console.log("Reward rate 0 or no LP, only setting timestamp");
+            lastCheckpointTimestamp = block.timestamp;
+            return;
+        }
+        console.log("Pending rewards before: %s", totalPendingRewards);
         totalPendingRewards = totalPendingRewards + rewardPerSecond * (block.timestamp - lastCheckpointTimestamp);
+        console.log("Pending rewards after: %s", totalPendingRewards);
         if (totalPendingRewards >= rewardToken.balanceOf(address(this))) {
+            console.log("setting reward to 0");
             rewardPerSecond = 0;
             emit LogRewardPerSecond(0);
         }
@@ -86,6 +117,8 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     ) external override onlyMasterChef {
         PoolInfo memory pool = updatePool(pid);
         UserInfo storage userPoolInfo = userInfo[pid][userAddress];
+        _checkpointTotalPendingRewards();
+        setTotalLpSupply(newLpAmount, userPoolInfo.amount);
         uint256 pending;
         if (userPoolInfo.amount > 0) {
             pending = ((userPoolInfo.amount * pool.accRewardTokenPerShare) / accTokenPrecision) - userPoolInfo.rewardDebt;
@@ -100,7 +133,6 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
             rewardToken.safeTransfer(recipient, pending);
             totalPendingRewards = totalPendingRewards - pending;
         }
-        _checkpointPendingRewards();
         emit LogOnReward(userAddress, pid, pending, recipient);
     }
 
@@ -119,7 +151,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     /// @notice Sets the rewards per second to be distributed. Can only be called by the owner.
     /// @param _rewardPerSecond The amount of token rewards to be distributed per second.
     function setRewardPerSecond(uint256 _rewardPerSecond) public onlyOwner {
-        _checkpointPendingRewards();
+        _checkpointTotalPendingRewards();
         rewardPerSecond = _rewardPerSecond;
         emit LogRewardPerSecond(_rewardPerSecond);
     }
