@@ -9,7 +9,7 @@ contract MultiBeetsMigrator {
     IERC20 public immutable LZBEETS;
     address public immutable TREASURY;
 
-    bool public enabled = true;
+    bool public enabled = false;
 
     address public admin;
 
