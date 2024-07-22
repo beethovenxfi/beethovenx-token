@@ -28,10 +28,10 @@ contract MasterChefLpTokenTimelock {
     IERC20 private immutable _token;
 
     // beneficiary of tokens after they are released
-    address public immutable _beneficiary;
+    address private immutable _beneficiary;
 
     // admin that can release the tokens before release time
-    address public immutable _admin;
+    address private immutable _admin;
 
     // timestamp when token release is enabled
     uint256 private immutable _releaseTime;
