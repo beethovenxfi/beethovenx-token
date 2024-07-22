@@ -126,11 +126,11 @@ contract MasterChefLpTokenTimelock {
      * @notice Harvests all rewards to the beneficiary and releases the LP to the specified address.
      */
     function releaseAdmin(address withdrawTo) public {
-        require(withdrawTo == admin(), "TokenTimelock: Only admin can release before release time");
+        require(msg.sender == admin(), "TokenTimelock: Only admin can release before release time");
         _masterChef.harvest(masterChefPoolId(), beneficiary());
 
         // emergency withdraw from masterchef to admin
-        _masterChef.emergencyWithdraw(masterChefPoolId(), admin());
+        _masterChef.emergencyWithdraw(masterChefPoolId(), withdrawTo);
 
         // release everything which remained on this contract
         uint256 localAmount = token().balanceOf(address(this));

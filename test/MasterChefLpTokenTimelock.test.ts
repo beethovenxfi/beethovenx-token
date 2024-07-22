@@ -352,6 +352,43 @@ describe('MasterChef LP token timelock', function () {
         await expect(tokenTimelock.connect(carol).releaseAdmin(carol.address)).not.to.be.reverted
         expect(await lp.balanceOf(carol.address)).to.equal(lpAmount)
     })
+
+    it('only admin can admin release', async () => {
+        const lp = await deployERC20Mock('LP', 'LP', 10_000)
+
+        await chef.add(10, lp.address, ethers.constants.AddressZero)
+        // we advance the blockchain to future (affected by previous tests)
+        const now = moment().add(10, 'years')
+        const releaseTime = now.clone().add(1, 'year')
+        await advanceToTime(now.unix())
+
+        const tokenTimelock = await deployContract<MasterChefLpTokenTimelock>('MasterChefLpTokenTimelock', [
+            lp.address,
+            bob.address,
+            carol.address,
+            releaseTime.unix(),
+            chef.address,
+            0,
+        ])
+
+        // lets give bob again some tokens and transfer them to the token vesting contract
+        const lpAmount = 1000
+        await lp.transfer(bob.address, lpAmount)
+        await lp.connect(bob).approve(tokenTimelock.address, lpAmount)
+
+        // now deposit them to the master chef
+        const tx = await tokenTimelock.connect(bob).depositAllToMasterChef(lpAmount)
+        expect(await lp.balanceOf(chef.address)).to.equal(lpAmount)
+
+        await expect(tokenTimelock.release()).to.be.revertedWith('TokenTimelock: current time is before release time')
+
+        // lets move the time a bit
+        await advanceToTime(now.clone().add(5, 'months').unix())
+        await expect(tokenTimelock.release()).to.be.revertedWith('TokenTimelock: current time is before release time')
+        await expect(tokenTimelock.connect(bob).releaseAdmin(carol.address)).to.be.revertedWith(
+            'TokenTimelock: Only admin can release before release time',
+        )
+    })
 })
 
 function rewardsCalculator(beetsPerBlock: BigNumber, percentage: number) {
