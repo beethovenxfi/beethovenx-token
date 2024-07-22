@@ -44,14 +44,8 @@ contract MasterChefLpTokenTimelock {
         BeethovenxMasterChef masterChef_,
         uint256 masterChefPoolId_
     ) {
-        require(
-            releaseTime_ > block.timestamp,
-            "TokenTimelock: release time is before current time"
-        );
-        require(
-            masterChef_.lpTokens(masterChefPoolId_) == token_,
-            "Provided poolId not eligible for this token"
-        );
+        require(releaseTime_ > block.timestamp, "TokenTimelock: release time is before current time");
+        require(masterChef_.lpTokens(masterChefPoolId_) == token_, "Provided poolId not eligible for this token");
         _token = token_;
         _beneficiary = beneficiary_;
         _releaseTime = releaseTime_;
@@ -84,21 +78,11 @@ contract MasterChefLpTokenTimelock {
      * @notice Transfers tokens held by timelock to beneficiary.
      */
     function release() public {
-        require(
-            block.timestamp >= releaseTime(),
-            "TokenTimelock: current time is before release time"
-        );
+        require(block.timestamp >= releaseTime(), "TokenTimelock: current time is before release time");
 
-        (uint256 amount, uint256 rewardDebt) = _masterChef.userInfo(
-            masterChefPoolId(),
-            address(this)
-        );
+        (uint256 amount, uint256 rewardDebt) = _masterChef.userInfo(masterChefPoolId(), address(this));
         // withdraw & harvest all from master chef
-        _masterChef.withdrawAndHarvest(
-            masterChefPoolId(),
-            amount,
-            beneficiary()
-        );
+        _masterChef.withdrawAndHarvest(masterChefPoolId(), amount, beneficiary());
 
         // release everything which remained on this contract
         uint256 localAmount = token().balanceOf(address(this));
@@ -119,11 +103,7 @@ contract MasterChefLpTokenTimelock {
         _token.safeTransferFrom(msg.sender, address(this), amount);
 
         _token.approve(address(_masterChef), _token.balanceOf(address(this)));
-        _masterChef.deposit(
-            _masterChefPoolId,
-            _token.balanceOf(address(this)),
-            address(this)
-        );
+        _masterChef.deposit(_masterChefPoolId, _token.balanceOf(address(this)), address(this));
     }
 
     function harvest() external {
