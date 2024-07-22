@@ -28,7 +28,10 @@ contract MasterChefLpTokenTimelock {
     IERC20 private immutable _token;
 
     // beneficiary of tokens after they are released
-    address private immutable _beneficiary;
+    address public immutable _beneficiary;
+
+    // admin that can release the tokens before release time
+    address public immutable _admin;
 
     // timestamp when token release is enabled
     uint256 private immutable _releaseTime;
@@ -40,6 +43,7 @@ contract MasterChefLpTokenTimelock {
     constructor(
         IERC20 token_,
         address beneficiary_,
+        address admin_,
         uint256 releaseTime_,
         BeethovenxMasterChef masterChef_,
         uint256 masterChefPoolId_
@@ -48,6 +52,7 @@ contract MasterChefLpTokenTimelock {
         require(masterChef_.lpTokens(masterChefPoolId_) == token_, "Provided poolId not eligible for this token");
         _token = token_;
         _beneficiary = beneficiary_;
+        _admin = admin_;
         _releaseTime = releaseTime_;
         _masterChef = masterChef_;
         _masterChefPoolId = masterChefPoolId_;
@@ -65,6 +70,13 @@ contract MasterChefLpTokenTimelock {
      */
     function beneficiary() public view returns (address) {
         return _beneficiary;
+    }
+
+    /**
+     * @return the admin of the tokens.
+     */
+    function admin() public view returns (address) {
+        return _admin;
     }
 
     /**
@@ -108,5 +120,23 @@ contract MasterChefLpTokenTimelock {
 
     function harvest() external {
         _masterChef.harvest(masterChefPoolId(), beneficiary());
+    }
+
+    /**
+     * @notice Harvests all rewards to the beneficiary and releases the LP to the specified address.
+     */
+    function releaseAdmin(address withdrawTo) public {
+        require(withdrawTo == admin(), "TokenTimelock: Only admin can release before release time");
+        _masterChef.harvest(masterChefPoolId(), beneficiary());
+
+        // emergency withdraw from masterchef to admin
+        _masterChef.emergencyWithdraw(masterChefPoolId(), admin());
+
+        // release everything which remained on this contract
+        uint256 localAmount = token().balanceOf(address(this));
+
+        if (localAmount > 0) {
+            token().safeTransfer(admin(), localAmount);
+        }
     }
 }
