@@ -1,0 +1,6 @@
+{
+  "contract": "TimeBasedMasterChefRewarder",
+  "address": "0x2E0F8ea058F4B7F79F17B87c0C2b1a960B13229b",
+  "args": ["0x8166994d9ebBe5829EC86Bd81258149B87faCfd3"],
+  "verified": false
+}
