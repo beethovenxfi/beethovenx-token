@@ -5,9 +5,9 @@ import axios from 'axios'
 
 async function run() {
     const masterchefSubgraphUrl = 'https://api.studio.thegraph.com/query/73674/masterchefv2/version/latest'
-    const farmId = 171
+    const farmId = 161
     const query = `{
-pool(id:161){
+pool(id:${farmId}){
   users{
     address
   }
