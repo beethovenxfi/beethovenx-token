@@ -89,7 +89,6 @@ contract BeethovenxMasterChef is Ownable {
 
     constructor(
         BeethovenxToken _beets,
-        address _treasuryAddress,
         uint256 _beetsPerSecond,
         uint256 _startTime
     ) {
@@ -325,6 +324,7 @@ contract BeethovenxMasterChef is Ownable {
 
     // Safe BEETS transfer function, just in case if rounding error causes pool to not have enough BEETS.
     // TODO do we need a way to make sure there is enough funds? Do we need to add a rewardCredit to positions instead of only rewardDebt?
+    // Could also just revert if there is not enough funds
     function safeBeetsTransfer(address _to, uint256 _amount) internal {
         uint256 beetsBalance = beets.balanceOf(address(this));
         if (_amount > beetsBalance) {
