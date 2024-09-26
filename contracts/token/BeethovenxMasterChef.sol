@@ -17,6 +17,12 @@ import "../interfaces/IRewarder.sol";
      - treasury percentage is subtracted from emissions instead of added on top
      - update of emission rate with upper limit of 6 BEETS/block
      - more require checks in general
+
+
+    Changes from the above for V2:
+    - Change from per block emissions to per second emissions due to Fantoms inconsistent block times
+    - No treasury allocation, all rewards go to LP holders
+    - Beets are not minted by the contract, but the contract holds them and distributes them
 */
 
 // Have fun reading it. Hopefully it's still bug-free
@@ -44,26 +50,16 @@ contract BeethovenxMasterChef is Ownable {
     struct PoolInfo {
         // we have a fixed number of BEETS tokens released per block, each pool gets his fraction based on the allocPoint
         uint256 allocPoint; // How many allocation points assigned to this pool. the fraction BEETS to distribute per block.
-        uint256 lastRewardBlock; // Last block number that BEETS distribution occurs.
+        uint256 lastRewardTime; // Last block time that BEETS distribution occurs.
         uint256 accBeetsPerShare; // Accumulated BEETS per LP share. this is multiplied by ACC_BEETS_PRECISION for more exact results (rounding errors)
     }
     // The BEETS TOKEN!
     BeethovenxToken public beets;
 
-    // Treasury address.
-    address public treasuryAddress;
-
-    // BEETS tokens created per block.
-    uint256 public beetsPerBlock;
+    // BEETS tokens created per second.
+    uint256 public beetsPerSecond;
 
     uint256 private constant ACC_BEETS_PRECISION = 1e12;
-
-    // distribution percentages: a value of 1000 = 100%
-    // 12.8% percentage of pool rewards that goes to the treasury.
-    uint256 public constant TREASURY_PERCENTAGE = 128;
-
-    // 87.2% percentage of pool rewards that goes to LP holders.
-    uint256 public constant POOL_PERCENTAGE = 872;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -80,7 +76,7 @@ contract BeethovenxMasterChef is Ownable {
     // Total allocation points. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
     // The block number when BEETS mining starts.
-    uint256 public startBlock;
+    uint256 public startTime;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
@@ -88,21 +84,19 @@ contract BeethovenxMasterChef is Ownable {
     event Harvest(address indexed user, uint256 indexed pid, uint256 amount);
     event LogPoolAddition(uint256 indexed pid, uint256 allocPoint, IERC20 indexed lpToken, IRewarder indexed rewarder);
     event LogSetPool(uint256 indexed pid, uint256 allocPoint, IRewarder indexed rewarder, bool overwrite);
-    event LogUpdatePool(uint256 indexed pid, uint256 lastRewardBlock, uint256 lpSupply, uint256 accBeetsPerShare);
-    event SetTreasuryAddress(address indexed oldAddress, address indexed newAddress);
+    event LogUpdatePool(uint256 indexed pid, uint256 lastRewardTime, uint256 lpSupply, uint256 accBeetsPerShare);
     event UpdateEmissionRate(address indexed user, uint256 _beetsPerSec);
 
     constructor(
         BeethovenxToken _beets,
         address _treasuryAddress,
-        uint256 _beetsPerBlock,
-        uint256 _startBlock
+        uint256 _beetsPerSecond,
+        uint256 _startTime
     ) {
-        require(_beetsPerBlock <= 6e18, "maximum emission rate of 6 beets per block exceeded");
+        require(_beetsPerSecond <= 6e18, "maximum emission rate of 6 beets per second exceeded");
         beets = _beets;
-        treasuryAddress = _treasuryAddress;
-        beetsPerBlock = _beetsPerBlock;
-        startBlock = _startBlock;
+        beetsPerSecond = _beetsPerSecond;
+        startTime = _startTime;
     }
 
     function poolLength() external view returns (uint256) {
@@ -120,8 +114,8 @@ contract BeethovenxMasterChef is Ownable {
         // we make sure the same LP cannot be added twice which would cause trouble
         require(!lpTokenAddresses.contains(address(_lpToken)), "add: LP already added");
 
-        // respect startBlock!
-        uint256 lastRewardBlock = block.number > startBlock ? block.number : startBlock;
+        // respect startTime!
+        uint256 lastRewardTime = block.timestamp > startTime ? block.timestamp : startTime;
         totalAllocPoint = totalAllocPoint + _allocPoint;
 
         // LP tokens, rewarders & pools are always on the same index which translates into the pid
@@ -129,7 +123,7 @@ contract BeethovenxMasterChef is Ownable {
         lpTokenAddresses.add(address(_lpToken));
         rewarder.push(_rewarder);
 
-        poolInfo.push(PoolInfo({allocPoint: _allocPoint, lastRewardBlock: lastRewardBlock, accBeetsPerShare: 0}));
+        poolInfo.push(PoolInfo({allocPoint: _allocPoint, lastRewardTime: lastRewardTime, accBeetsPerShare: 0}));
         emit LogPoolAddition(lpTokens.length - 1, _allocPoint, _lpToken, _rewarder);
     }
 
@@ -166,14 +160,10 @@ contract BeethovenxMasterChef is Ownable {
         // total staked lp tokens in this pool
         uint256 lpSupply = lpTokens[_pid].balanceOf(address(this));
 
-        if (block.number > pool.lastRewardBlock && lpSupply != 0) {
-            uint256 blocksSinceLastReward = block.number - pool.lastRewardBlock;
+        if (block.timestamp > pool.lastRewardTime && lpSupply != 0) {
+            uint256 secondsSinceLastReward = block.timestamp - pool.lastRewardTime;
             // based on the pool weight (allocation points) we calculate the beets rewarded for this specific pool
-            uint256 beetsRewards = (blocksSinceLastReward * beetsPerBlock * pool.allocPoint) / totalAllocPoint;
-
-            // we take parts of the rewards for treasury, these can be subject to change, so we recalculate it
-            // a value of 1000 = 100%
-            uint256 beetsRewardsForPool = (beetsRewards * POOL_PERCENTAGE) / 1000;
+            uint256 beetsRewardsForPool = (secondsSinceLastReward * beetsPerSecond * pool.allocPoint) / totalAllocPoint;
 
             // we calculate the new amount of accumulated beets per LP token
             accBeetsPerShare = accBeetsPerShare + ((beetsRewardsForPool * ACC_BEETS_PRECISION) / lpSupply);
@@ -196,27 +186,21 @@ contract BeethovenxMasterChef is Ownable {
     function updatePool(uint256 _pid) public returns (PoolInfo memory pool) {
         pool = poolInfo[_pid];
 
-        if (block.number > pool.lastRewardBlock) {
+        if (block.timestamp > pool.lastRewardTime) {
             // total lp tokens staked for this pool
             uint256 lpSupply = lpTokens[_pid].balanceOf(address(this));
             if (lpSupply > 0) {
-                uint256 blocksSinceLastReward = block.number - pool.lastRewardBlock;
+                uint256 secondsSinceLastReward = block.timestamp - pool.lastRewardTime;
 
                 // rewards for this pool based on his allocation points
-                uint256 beetsRewards = (blocksSinceLastReward * beetsPerBlock * pool.allocPoint) / totalAllocPoint;
-
-                uint256 beetsRewardsForPool = (beetsRewards * POOL_PERCENTAGE) / 1000;
-
-                beets.mint(treasuryAddress, (beetsRewards * TREASURY_PERCENTAGE) / 1000);
-
-                beets.mint(address(this), beetsRewardsForPool);
+                uint256 beetsRewardsForPool = (secondsSinceLastReward * beetsPerSecond * pool.allocPoint) / totalAllocPoint;
 
                 pool.accBeetsPerShare = pool.accBeetsPerShare + ((beetsRewardsForPool * ACC_BEETS_PRECISION) / lpSupply);
             }
-            pool.lastRewardBlock = block.number;
+            pool.lastRewardTime = block.number;
             poolInfo[_pid] = pool;
 
-            emit LogUpdatePool(_pid, pool.lastRewardBlock, lpSupply, pool.accBeetsPerShare);
+            emit LogUpdatePool(_pid, pool.lastRewardTime, lpSupply, pool.accBeetsPerShare);
         }
     }
 
@@ -340,6 +324,7 @@ contract BeethovenxMasterChef is Ownable {
     }
 
     // Safe BEETS transfer function, just in case if rounding error causes pool to not have enough BEETS.
+    // TODO do we need a way to make sure there is enough funds? Do we need to add a rewardCredit to positions instead of only rewardDebt?
     function safeBeetsTransfer(address _to, uint256 _amount) internal {
         uint256 beetsBalance = beets.balanceOf(address(this));
         if (_amount > beetsBalance) {
@@ -349,15 +334,9 @@ contract BeethovenxMasterChef is Ownable {
         }
     }
 
-    // Update treasury address by the owner.
-    function treasury(address _treasuryAddress) public onlyOwner {
-        treasuryAddress = _treasuryAddress;
-        emit SetTreasuryAddress(treasuryAddress, _treasuryAddress);
-    }
-
-    function updateEmissionRate(uint256 _beetsPerBlock) public onlyOwner {
-        require(_beetsPerBlock <= 6e18, "maximum emission rate of 6 beets per block exceeded");
-        beetsPerBlock = _beetsPerBlock;
-        emit UpdateEmissionRate(msg.sender, _beetsPerBlock);
+    function updateEmissionRate(uint256 _beetsPerSecond) public onlyOwner {
+        require(_beetsPerSecond <= 6e18, "maximum emission rate of 6 beets per second exceeded");
+        beetsPerSecond = _beetsPerSecond;
+        emit UpdateEmissionRate(msg.sender, _beetsPerSecond);
     }
 }
