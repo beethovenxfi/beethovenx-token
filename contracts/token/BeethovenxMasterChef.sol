@@ -41,15 +41,15 @@ contract BeethovenxMasterChef is Ownable {
         //   pending reward = (user.amount * pool.accBeetsPerShare) - user.rewardDebt
         //
         // Whenever a user deposits or withdraws LP tokens to a pool. Here's what happens:
-        //   1. The pool's `accBeetsPerShare` (and `lastRewardBlock`) gets updated.
+        //   1. The pool's `accBeetsPerShare` (and `lastRewardTime`) gets updated.
         //   2. User receives the pending reward sent to his/her address.
         //   3. User's `amount` gets updated.
         //   4. User's `rewardDebt` gets updated.
     }
     // Info of each pool.
     struct PoolInfo {
-        // we have a fixed number of BEETS tokens released per block, each pool gets his fraction based on the allocPoint
-        uint256 allocPoint; // How many allocation points assigned to this pool. the fraction BEETS to distribute per block.
+        // we have a fixed number of BEETS tokens released per second, each pool gets his fraction based on the allocPoint
+        uint256 allocPoint; // How many allocation points assigned to this pool. the fraction BEETS to distribute per second.
         uint256 lastRewardTime; // Last block time that BEETS distribution occurs.
         uint256 accBeetsPerShare; // Accumulated BEETS per LP share. this is multiplied by ACC_BEETS_PRECISION for more exact results (rounding errors)
     }
@@ -75,7 +75,7 @@ contract BeethovenxMasterChef is Ownable {
     mapping(uint256 => mapping(address => UserInfo)) public userInfo; // mapping form poolId => user Address => User Info
     // Total allocation points. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
-    // The block number when BEETS mining starts.
+    // The block time when BEETS mining starts.
     uint256 public startTime;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
@@ -197,7 +197,7 @@ contract BeethovenxMasterChef is Ownable {
 
                 pool.accBeetsPerShare = pool.accBeetsPerShare + ((beetsRewardsForPool * ACC_BEETS_PRECISION) / lpSupply);
             }
-            pool.lastRewardTime = block.number;
+            pool.lastRewardTime = block.timestamp;
             poolInfo[_pid] = pool;
 
             emit LogUpdatePool(_pid, pool.lastRewardTime, lpSupply, pool.accBeetsPerShare);
