@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract MultiBeetsMigrator {
+contract SonicBeetsMigrator {
     IERC20 public immutable OPERABEETS;
     IERC20 public immutable SONICBEETS;
     address public immutable TREASURY;
