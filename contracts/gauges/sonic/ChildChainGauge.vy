@@ -121,17 +121,18 @@ def __init__(
     _voting_escrow_delegation_proxy: address,
     _bal_pseudo_minter: address,
     _authorizer_adaptor: address,
+    _bal_vault: address,
     _version: String[128]
 ):
     self.lp_token = 0x000000000000000000000000000000000000dEaD
     self.version = _version
     self.factory = 0x000000000000000000000000000000000000dEaD
 
-    VE_DELEGATION_PROXY = _voting_escrow_delegation_proxy
-    BAL_PSEUDO_MINTER = _bal_pseudo_minter
-    BAL = Minter(_bal_pseudo_minter).getBalancerToken()
+    VE_DELEGATION_PROXY = 0x0000000000000000000000000000000000000000
+    BAL_PSEUDO_MINTER = 0x0000000000000000000000000000000000000000
+    BAL = 0x0000000000000000000000000000000000000000
     AUTHORIZER_ADAPTOR = _authorizer_adaptor
-    BAL_VAULT = AuthorizerAdaptor(_authorizer_adaptor).getVault()
+    BAL_VAULT = _bal_vault
 
 
 @internal
@@ -166,7 +167,7 @@ def _checkpoint(_user: address):
             week_time = min(week_time + WEEK, block.timestamp)
 
     # check BAL balance and increase weekly inflation rate by delta for the rest of the week
-    bal_balance: uint256 = ERC20(BAL).balanceOf(self)
+    bal_balance: 0
     if bal_balance != 0:
         current_week: uint256 = block.timestamp / WEEK
         self.inflation_rate[current_week] += bal_balance / ((current_week + 1) * WEEK - block.timestamp)
@@ -761,7 +762,7 @@ def initialize(_lp_token: address, _version: String[128]):
     self.factory = msg.sender
 
     symbol: String[26] = ERC20Extended(_lp_token).symbol()
-    name: String[64] = concat("Balancer ", symbol, " Gauge Deposit")
+    name: String[64] = concat("Beets ", symbol, " Gauge Deposit")
 
     self.name = name
     self.symbol = concat(symbol, "-gauge")
