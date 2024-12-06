@@ -74,7 +74,8 @@ BAL: immutable(address)
 BAL_PSEUDO_MINTER: immutable(address)
 VE_DELEGATION_PROXY: immutable(address)
 BAL_VAULT: immutable(address)
-AUTHORIZER_ADAPTOR: immutable(address)
+# BEETS: Since we are not using the authorizer adaptor, we rename the immutable to better reflect the address
+BEETS_DAO_MULTISIG: immutable(address)
 
 DOMAIN_SEPARATOR: public(bytes32)
 nonces: public(HashMap[address, uint256])
@@ -120,7 +121,7 @@ inflation_rate: public(HashMap[uint256, uint256])
 def __init__(
     _voting_escrow_delegation_proxy: address,
     _bal_pseudo_minter: address,
-    _authorizer_adaptor: address,
+    _beets_dao_multisig: address,
     _bal_vault: address,
     _version: String[128]
 ):
@@ -131,7 +132,7 @@ def __init__(
     VE_DELEGATION_PROXY = 0x0000000000000000000000000000000000000000
     BAL_PSEUDO_MINTER = 0x0000000000000000000000000000000000000000
     BAL = 0x0000000000000000000000000000000000000000
-    AUTHORIZER_ADAPTOR = _authorizer_adaptor
+    BEETS_DAO_MULTISIG = _beets_dao_multisig
     BAL_VAULT = _bal_vault
 
 
@@ -553,7 +554,10 @@ def claimable_tokens(addr: address) -> uint256:
     @return uint256 number of claimable tokens per user
     """
     self._checkpoint(addr)
-    return self.integrate_fraction[addr] - Minter(BAL_PSEUDO_MINTER).minted(addr, self)
+    # BEETS: Since we don't support the pseudo minter and BAL emissions, we return 0.
+    # This function is left here for interface compatibility with balancer gauges
+    # return self.integrate_fraction[addr] - Minter(BAL_PSEUDO_MINTER).minted(addr, self)
+    return 0
 
 
 @view
@@ -626,7 +630,7 @@ def add_reward(_reward_token: address, _distributor: address):
     @notice Set the active reward contract.
     @dev The reward token cannot be BAL, since it is transferred automatically to the pseudo minter during checkpoints.
     """
-    assert msg.sender == AUTHORIZER_ADAPTOR, "SENDER_NOT_ALLOWED"  # dev: only owner
+    assert msg.sender == BEETS_DAO_MULTISIG, "SENDER_NOT_ALLOWED"  # dev: only owner
     assert _reward_token != BAL, "CANNOT_ADD_BAL_REWARD"
 
     reward_count: uint256 = self.reward_count
@@ -642,7 +646,7 @@ def add_reward(_reward_token: address, _distributor: address):
 def set_reward_distributor(_reward_token: address, _distributor: address):
     current_distributor: address = self.reward_data[_reward_token].distributor
 
-    assert msg.sender in [current_distributor, AUTHORIZER_ADAPTOR], "SENDER_NOT_ALLOWED"
+    assert msg.sender in [current_distributor, BEETS_DAO_MULTISIG], "SENDER_NOT_ALLOWED"
     assert current_distributor != ZERO_ADDRESS, "REWARD_NOT_ADDED"
     assert _distributor != ZERO_ADDRESS, "INVALID_DISTRIBUTOR"
 
@@ -687,7 +691,7 @@ def killGauge():
     """
     @notice Kills the gauge so it always yields a rate of 0 and so cannot mint BAL
     """
-    assert msg.sender == AUTHORIZER_ADAPTOR, "SENDER_NOT_ALLOWED"  # dev: only owner
+    assert msg.sender == BEETS_DAO_MULTISIG, "SENDER_NOT_ALLOWED"  # dev: only owner
 
     self.is_killed = True
 
@@ -697,7 +701,7 @@ def unkillGauge():
     """
     @notice Unkills the gauge so it can mint BAL again
     """
-    assert msg.sender == AUTHORIZER_ADAPTOR, "SENDER_NOT_ALLOWED"  # dev: only owner
+    assert msg.sender == BEETS_DAO_MULTISIG, "SENDER_NOT_ALLOWED"  # dev: only owner
 
     self.is_killed = False
 
@@ -744,13 +748,15 @@ def voting_escrow_delegation_proxy() -> address:
     return VE_DELEGATION_PROXY
 
 
+# BEETS: The function name is left as authorizer_adaptor for interface compatibility with balancer gauges
+# The constant is renamed to better reflect the address
 @view
 @external
 def authorizer_adaptor() -> address:
     """
-    @notice Return the authorizer adaptor address.
+    @notice Return the Beets DAO Multisig address.
     """
-    return AUTHORIZER_ADAPTOR
+    return BEETS_DAO_MULTISIG
 
 
 @external
