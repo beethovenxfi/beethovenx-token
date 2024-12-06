@@ -168,7 +168,7 @@ def _checkpoint(_user: address):
             week_time = min(week_time + WEEK, block.timestamp)
 
     # BEETS: To ensure this if statement never executes, we set the bal_balance to 0.
-    bal_balance: uint256 = 0
+    bal_balance: 0
     # check BAL balance and increase weekly inflation rate by delta for the rest of the week
     # bal_balance: uint256 = ERC20(BAL).balanceOf(self)
     if bal_balance != 0:
