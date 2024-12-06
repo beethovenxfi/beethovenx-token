@@ -167,8 +167,10 @@ def _checkpoint(_user: address):
             prev_week_time = week_time
             week_time = min(week_time + WEEK, block.timestamp)
 
+    # BEETS: To ensure this if statement never executes, we set the bal_balance to 0.
+    bal_balance: uint256 = 0
     # check BAL balance and increase weekly inflation rate by delta for the rest of the week
-    bal_balance: 0
+    # bal_balance: uint256 = ERC20(BAL).balanceOf(self)
     if bal_balance != 0:
         current_week: uint256 = block.timestamp / WEEK
         self.inflation_rate[current_week] += bal_balance / ((current_week + 1) * WEEK - block.timestamp)
