@@ -557,7 +557,7 @@ def claimable_tokens(addr: address) -> uint256:
     """
     self._checkpoint(addr)
     # BEETS: Since we don't support the pseudo minter and BAL emissions, we return 0.
-    # This function is left here for interface compatibility with balancer gauges
+    # This function is left for interface compatibility with balancer gauges
     # return self.integrate_fraction[addr] - Minter(BAL_PSEUDO_MINTER).minted(addr, self)
     return 0
 
