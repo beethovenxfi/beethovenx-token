@@ -67,7 +67,7 @@ const config: HardhatUserConfig = {
             saveDeployments: true,
         },
         fantom: {
-            url: 'https://rpc.ankr.com/fantom',
+            url: 'https://rpc.ftm.tools/',
             accounts,
             chainId: 250,
             live: true,
@@ -83,6 +83,11 @@ const config: HardhatUserConfig = {
             url: 'https://mainnet.optimism.io',
             accounts: accounts,
             chainId: 10,
+        },
+        gnosis: {
+            url: 'https://rpc.gnosischain.com',
+            accounts: accounts,
+            chainId: 100,
         },
         // "fantom-testnet": {
         //   url: "https://rpc.testnet.fantom.network",
@@ -110,6 +115,15 @@ const config: HardhatUserConfig = {
         compilers: [
             {
                 version: '0.8.7',
+                settings: {
+                    optimizer: {
+                        enabled: true,
+                        runs: 200,
+                    },
+                },
+            },
+            {
+                version: '0.7.0',
                 settings: {
                     optimizer: {
                         enabled: true,
@@ -157,6 +171,9 @@ const config: HardhatUserConfig = {
             files: ['./contracts'],
             verbose: true,
         },
+    },
+    vyper: {
+        version: '0.3.3',
     },
 }
 
