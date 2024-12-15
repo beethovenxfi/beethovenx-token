@@ -39,6 +39,9 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
 
     address public immutable masterChef;
 
+    uint256 public totalPendingRewards;
+    uint256 public lastCheckpointTimestamp;
+
     event LogOnReward(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
     event LogPoolAddition(uint256 indexed pid, uint256 allocPoint);
     event LogSetPool(uint256 indexed pid, uint256 allocPoint);
@@ -65,6 +68,15 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
         emit LogSetRewardToken(token, accTokenPrecision);
     }
 
+    function _checkpointPendingRewards() internal {
+        totalPendingRewards = totalPendingRewards + rewardPerSecond * (block.timestamp - lastCheckpointTimestamp);
+        if (totalPendingRewards >= rewardToken.balanceOf(address(this))) {
+            rewardPerSecond = 0;
+            emit LogRewardPerSecond(0);
+        }
+        lastCheckpointTimestamp = block.timestamp;
+    }
+
     function onBeetsReward(
         uint256 pid,
         address userAddress,
@@ -86,8 +98,9 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
 
         if (pending > 0) {
             rewardToken.safeTransfer(recipient, pending);
+            totalPendingRewards = totalPendingRewards - pending;
         }
-
+        _checkpointPendingRewards();
         emit LogOnReward(userAddress, pid, pending, recipient);
     }
 
@@ -106,6 +119,7 @@ contract TimeBasedMasterChefRewarder is IRewarder, Ownable {
     /// @notice Sets the rewards per second to be distributed. Can only be called by the owner.
     /// @param _rewardPerSecond The amount of token rewards to be distributed per second.
     function setRewardPerSecond(uint256 _rewardPerSecond) public onlyOwner {
+        _checkpointPendingRewards();
         rewardPerSecond = _rewardPerSecond;
         emit LogRewardPerSecond(_rewardPerSecond);
     }
